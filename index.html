@@ -1032,6 +1032,45 @@ function initFirestore() {
   });
 }
 
+function sanitizeDate(val) {
+  // Firestore Timestamp, Date 객체, 문자열 모두 'YYYY-MM-DD' 형식으로 변환
+  if(!val) return '';
+  if(typeof val === 'string') {
+    // 이미 올바른 형식이면 그대로
+    if(/^\d{4}-\d{2}-\d{2}/.test(val)) return val.substring(0,10);
+    // Date 문자열인 경우 (Wed May 20 2026...)
+    var d = new Date(val);
+    if(!isNaN(d.getTime())) {
+      return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().split('T')[0];
+    }
+    return val;
+  }
+  // Firestore Timestamp
+  if(val && typeof val.toDate === 'function') {
+    var d = val.toDate();
+    return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().split('T')[0];
+  }
+  // Date 객체
+  if(val instanceof Date) {
+    return new Date(val.getTime() - val.getTimezoneOffset()*60000).toISOString().split('T')[0];
+  }
+  // 숫자 (timestamp ms)
+  if(typeof val === 'number') {
+    var d = new Date(val);
+    return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().split('T')[0];
+  }
+  return String(val);
+}
+
+function sanitizeRecord(record) {
+  if(!record) return record;
+  if(record.date) record.date = sanitizeDate(record.date);
+  if(record.startDate) record.startDate = sanitizeDate(record.startDate);
+  if(record.endDate) record.endDate = sanitizeDate(record.endDate);
+  if(record.createdAt && typeof record.createdAt !== 'string') record.createdAt = String(record.createdAt);
+  return record;
+}
+
 function loadDataFromFirestore() {
   var db = window.firestoreDb;
   if(!db) {
@@ -1046,36 +1085,27 @@ function loadDataFromFirestore() {
 
   // 병렬로 모든 컬렉션 로딩
   var promises = [
-    // 최근 90일 운동
     db.collection('workouts').where('date','>=',cutoff90).get(),
-    // 영양 전체
     db.collection('nutrition').get(),
-    // 치수 전체
     db.collection('measurements').get(),
-    // 계획 전체
     db.collection('plans').get(),
-    // 일기 전체
     db.collection('diary').get(),
-    // 참조데이터
     db.collection('exercises').get(),
-    // 템플릿
     db.collection('templates').get(),
-    // 반복계획
     db.collection('repeatPlans').get(),
-    // 목표
     db.collection('goals').get(),
   ];
 
   Promise.all(promises).then(function(results) {
-    var workouts    = results[0].docs.map(function(d){return d.data();});
-    var nutrition   = results[1].docs.map(function(d){return d.data();});
-    var measure     = results[2].docs.map(function(d){return d.data();});
-    var plans       = results[3].docs.map(function(d){return d.data();});
-    var diary       = results[4].docs.map(function(d){return d.data();});
+    var workouts    = results[0].docs.map(function(d){return sanitizeRecord(d.data());});
+    var nutrition   = results[1].docs.map(function(d){return sanitizeRecord(d.data());});
+    var measure     = results[2].docs.map(function(d){return sanitizeRecord(d.data());});
+    var plans       = results[3].docs.map(function(d){return sanitizeRecord(d.data());});
+    var diary       = results[4].docs.map(function(d){return sanitizeRecord(d.data());});
     var exercises   = results[5].docs.map(function(d){return d.data();});
     var templates   = results[6].docs.map(function(d){return d.data();});
     var repeatPlans = results[7].docs.map(function(d){return d.data();});
-    var goals       = results[8].docs.map(function(d){return d.data();});
+    var goals       = results[8].docs.map(function(d){return sanitizeRecord(d.data());});
 
     // exercises → dataRef 포맷으로 변환
     var dataRef = exercises.map(function(e){
@@ -1096,12 +1126,35 @@ function loadDataFromFirestore() {
       isPartial: false
     });
 
+    // processInitData 후 UI 명시적 갱신
+    setTimeout(function() {
+      updateAttendance();
+      updateWeeklyReport();
+      renderGoalsCard();
+      updateTodayVolume();
+      updateTodayViews();
+      updateTodayProtein();
+      renderDiaryList();
+    }, 100);
+
+    setTimeout(function() {
+      updateCharts();
+      renderGoalWeight();
+      updateRestDayStats();
+      updatePartVolumeChart();
+      updatePlanVsActualChart();
+      renderHeatmap();
+      updateOneRmSelect();
+    }, 300);
+
+    showToast('로딩 완료!', true);
+
     // 백그라운드: 90일 이전 전체 운동 기록 로딩
     db.collection('workouts').where('date','<',cutoff90).get().then(function(snap) {
-      var oldWorkouts = snap.docs.map(function(d){return d.data();});
-      var existingIds = new Set(db.workout.map(function(w){return w.id;}));
-      oldWorkouts.forEach(function(w){ if(!existingIds.has(w.id)) db.workout.push(w); });
-      db.workout.forEach(function(w) {
+      var oldWorkouts = snap.docs.map(function(d){return sanitizeRecord(d.data());});
+      var existingIds = new Set(window.db.workout.map(function(w){return w.id;}));
+      oldWorkouts.forEach(function(w){ if(!existingIds.has(w.id)) window.db.workout.push(w); });
+      window.db.workout.forEach(function(w) {
         if(!w.time){ var m2=(w.memo||'').match(/^\[(\d{2}:\d{2}:\d{2})\|(.*?)\]\s*(.*)$/); if(m2){w.time=m2[1];w.duration=m2[2];w.rawMemo=m2[3];}else{w.time='';w.duration='';w.rawMemo=w.memo||'';} }
         if(w.time&&!w.absTime){var p=w.time.split(':');var d2=new Date(w.date+'T'+w.time);w.absTime=d2.getTime();}
       });
@@ -1113,12 +1166,9 @@ function loadDataFromFirestore() {
       renderDiaryList(); renderGoalsCard(); updateOneRmSelect();
     });
 
-    showToast('로딩 완료!', true);
-
   }).catch(function(e) {
     console.error('Firestore 로딩 오류:', e);
     showToast('데이터 로딩 실패: '+e.message, false);
-    // 빈 데이터로라도 시작
     processInitData({ workout:[], nutrition:[], measure:[], plan:[], diary:[], dataRef:[], templates:[], repeatPlans:[], goals:[], settings:{}, isPartial:false });
   });
 }
