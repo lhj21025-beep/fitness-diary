@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>피트니스 다이어리</title>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config={darkMode:'class',theme:{extend:{}}}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -837,7 +841,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
   </div>
 </div>
 <script>
-var IS_GAS = typeof google !== 'undefined' && google.script;
+var IS_GAS = false; // GitHub Pages 버전 - Firestore 사용
 var isSavingRecord = false;
 var db = { workout:[], nutrition:[], measure:[], plan:[], diary:[], refExercise:{}, refNutrition:{}, templates:[], repeatPlans:[], goals:[], settings:{} };
 var currentTab = 'home';
@@ -989,22 +993,134 @@ function initApp() {
   var savedWeeklyGoal = localStorage.getItem('weeklyWorkoutGoal');
   if(savedWeeklyGoal) document.getElementById('weeklyGoalInput').value = savedWeeklyGoal;
 
-  if(IS_GAS) {
-    google.script.run
-      .withSuccessHandler(data => {
-        try { processInitData(typeof data==='string' ? JSON.parse(data) : data); }
-        catch(e) { console.error(e); showToast('데이터 오류',false); }
-      })
-      .withFailureHandler(e => { console.error(e); showToast('서버 연결 실패',false); })
-      .getInitialData();
-  } else {
-    processInitData({ workout:[], nutrition:[], measure:[], plan:[], diary:[], dataRef:[], templates:[], repeatPlans:[], goals:[], settings:{}, isPartial:true });
-  }
+  // Firestore에서 데이터 로딩
+  loadDataFromFirestore();
 }
 
 function ensureIds(arr) {
   if(!arr) return;
   arr.forEach(item => { if(!item.id) item.id='id_'+Date.now()+'_'+Math.random().toString(36).substr(2,5); });
+}
+
+// ========== Firebase / Firestore 초기화 ==========
+var firestoreDb = null;
+var firestoreReady = false;
+
+function initFirestore() {
+  // Firebase SDK가 로드된 후 초기화
+  var firebaseConfig = {
+    apiKey: "AIzaSyAGPVtZmJLSPgqstRavfpqAszCUxK8lpSY",
+    authDomain: "fitness-diary-13071.firebaseapp.com",
+    projectId: "fitness-diary-13071",
+    storageBucket: "fitness-diary-13071.firebasestorage.app",
+    messagingSenderId: "405177456277",
+    appId: "1:405177456277:web:c2392f665d6cf3a60aad9c"
+  };
+
+  if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  window.firestoreDb = firebase.firestore();
+  window.firestoreReady = true;
+
+  // 익명 로그인 (보안 규칙 적용)
+  firebase.auth().signInAnonymously().then(function() {
+    console.log('Firebase 익명 로그인 완료');
+    loadDataFromFirestore();
+  }).catch(function(e) {
+    console.error('Firebase 로그인 실패:', e);
+    // 로그인 실패해도 로딩 시도
+    loadDataFromFirestore();
+  });
+}
+
+function loadDataFromFirestore() {
+  var db = window.firestoreDb;
+  if(!db) {
+    showToast('DB 연결 중...', false);
+    setTimeout(loadDataFromFirestore, 1000);
+    return;
+  }
+
+  showToast('데이터 로딩 중...', true);
+  var today = getTodayStr();
+  var cutoff90 = subtractDays(today, 90);
+
+  // 병렬로 모든 컬렉션 로딩
+  var promises = [
+    // 최근 90일 운동
+    db.collection('workouts').where('date','>=',cutoff90).get(),
+    // 영양 전체
+    db.collection('nutrition').get(),
+    // 치수 전체
+    db.collection('measurements').get(),
+    // 계획 전체
+    db.collection('plans').get(),
+    // 일기 전체
+    db.collection('diary').get(),
+    // 참조데이터
+    db.collection('exercises').get(),
+    // 템플릿
+    db.collection('templates').get(),
+    // 반복계획
+    db.collection('repeatPlans').get(),
+    // 목표
+    db.collection('goals').get(),
+  ];
+
+  Promise.all(promises).then(function(results) {
+    var workouts    = results[0].docs.map(function(d){return d.data();});
+    var nutrition   = results[1].docs.map(function(d){return d.data();});
+    var measure     = results[2].docs.map(function(d){return d.data();});
+    var plans       = results[3].docs.map(function(d){return d.data();});
+    var diary       = results[4].docs.map(function(d){return d.data();});
+    var exercises   = results[5].docs.map(function(d){return d.data();});
+    var templates   = results[6].docs.map(function(d){return d.data();});
+    var repeatPlans = results[7].docs.map(function(d){return d.data();});
+    var goals       = results[8].docs.map(function(d){return d.data();});
+
+    // exercises → dataRef 포맷으로 변환
+    var dataRef = exercises.map(function(e){
+      return {type:'ex', part:e.part, name:e.name, unit:e.unit||'KG', typeFlag:e.typeFlag||'', youtube:e.youtube||''};
+    });
+
+    processInitData({
+      workout: workouts,
+      nutrition: nutrition,
+      measure: measure,
+      plan: plans,
+      diary: diary,
+      dataRef: dataRef,
+      templates: templates,
+      repeatPlans: repeatPlans,
+      goals: goals,
+      settings: {},
+      isPartial: false
+    });
+
+    // 백그라운드: 90일 이전 전체 운동 기록 로딩
+    db.collection('workouts').where('date','<',cutoff90).get().then(function(snap) {
+      var oldWorkouts = snap.docs.map(function(d){return d.data();});
+      var existingIds = new Set(db.workout.map(function(w){return w.id;}));
+      oldWorkouts.forEach(function(w){ if(!existingIds.has(w.id)) db.workout.push(w); });
+      db.workout.forEach(function(w) {
+        if(!w.time){ var m2=(w.memo||'').match(/^\[(\d{2}:\d{2}:\d{2})\|(.*?)\]\s*(.*)$/); if(m2){w.time=m2[1];w.duration=m2[2];w.rawMemo=m2[3];}else{w.time='';w.duration='';w.rawMemo=w.memo||'';} }
+        if(w.time&&!w.absTime){var p=w.time.split(':');var d2=new Date(w.date+'T'+w.time);w.absTime=d2.getTime();}
+      });
+      isHistoryFullyLoaded = true;
+      updateCharts(); renderHeatmap(); updateRestDayStats();
+      updatePartVolumeChart(); updatePlanVsActualChart();
+      updateAttendance(); updateWeeklyReport();
+      updateTodayVolume(); updateTodayViews(); updateTodayProtein();
+      renderDiaryList(); renderGoalsCard(); updateOneRmSelect();
+    });
+
+    showToast('로딩 완료!', true);
+
+  }).catch(function(e) {
+    console.error('Firestore 로딩 오류:', e);
+    showToast('데이터 로딩 실패: '+e.message, false);
+    // 빈 데이터로라도 시작
+    processInitData({ workout:[], nutrition:[], measure:[], plan:[], diary:[], dataRef:[], templates:[], repeatPlans:[], goals:[], settings:{}, isPartial:false });
+  });
 }
 
 function processInitData(data) {
@@ -1043,36 +1159,7 @@ function processInitData(data) {
   renderGoalsCard(); renderDiaryList(); applyOfflineQueue();
   initHistoryLongPress();
 
-  // 2단계: 백그라운드로 전체 히스토리 로딩
-  if(data.isPartial && IS_GAS) {
-    setTimeout(() => {
-      google.script.run
-        .withSuccessHandler(fullData => {
-          try {
-            var fd = typeof fullData==='string' ? JSON.parse(fullData) : fullData;
-            // 새로운 데이터만 머지 (ID 기준)
-            var existingIds = new Set(db.workout.map(function(w){return w.id;}));
-            (fd.workout||[]).forEach(function(w){ if(!existingIds.has(w.id)){db.workout.push(w);} });
-            var existingNIds = new Set(db.nutrition.map(function(n){return n.id;}));
-            (fd.nutrition||[]).forEach(function(n){ if(!existingNIds.has(n.id)){db.nutrition.push(n);} });
-            var existingDIds = new Set(db.diary.map(function(d){return d.id;}));
-            (fd.diary||[]).forEach(function(d){ if(!existingDIds.has(d.id)){db.diary.push(d);} });
-            db.workout.forEach(function(w) {
-              if(!w.time){ var m2=(w.memo||'').match(/^\[(\d{2}:\d{2}:\d{2})\|(.*?)\]\s*(.*)$/); if(m2){w.time=m2[1];w.duration=m2[2];w.rawMemo=m2[3];}else{w.time='';w.duration='';w.rawMemo=w.memo||'';} }
-              if(w.time&&!w.absTime){var p=w.time.split(':');var d2=new Date(w.date+'T'+w.time);w.absTime=d2.getTime();}
-            });
-            isHistoryFullyLoaded = true;
-            updateCharts(); renderHeatmap(); updateRestDayStats();
-            updatePartVolumeChart(); updatePlanVsActualChart();
-            updateAttendance(); updateWeeklyReport();
-            updateTodayVolume(); updateTodayViews(); updateTodayProtein();
-            renderDiaryList(); renderGoalsCard(); updateOneRmSelect();
-          } catch(e){ console.error('전체 로딩 오류:',e); }
-        })
-        .withFailureHandler(e=>console.error('전체 로딩 실패:',e))
-        .getAllHistory();
-    }, 3000);
-  } else { isHistoryFullyLoaded = true; }
+  isHistoryFullyLoaded = true;
 }
 
 // ========== 오프라인 처리 ==========
@@ -1110,20 +1197,117 @@ function applyOfflineQueue() {
 }
 
 function gasRun(fnName) {
+  // Firestore 버전 - GAS 대신 Firestore SDK 사용
   var args = [];
   for(var i=1;i<arguments.length;i++) args.push(arguments[i]);
-  if(!IS_GAS) return;
-  if(!navigator.onLine) { addToOfflineQueue(fnName, args); return; }
+  if(!window.firestoreReady) { addToOfflineQueue(fnName, args); return; }
   try {
-    var runner = google.script.run.withFailureHandler(function(e){ console.error('GAS오류['+fnName+']:', e); });
-    switch(args.length) {
-      case 0: runner[fnName](); break;
-      case 1: runner[fnName](args[0]); break;
-      case 2: runner[fnName](args[0], args[1]); break;
-      case 3: runner[fnName](args[0], args[1], args[2]); break;
-      default: runner[fnName](args[0], args[1], args[2], args[3]); break;
+    handleFirestoreOp(fnName, args);
+  } catch(e) {
+    console.error('Firestore 오류['+fnName+']:', e);
+    addToOfflineQueue(fnName, args);
+  }
+}
+
+function handleFirestoreOp(fnName, args) {
+  var db = window.firestoreDb;
+  var a = args;
+
+  // 컬렉션 매핑
+  var colMap = {
+    'workout':'workouts','nutrition':'nutrition','measure':'measurements',
+    'plan':'plans','diary':'diary','goal':'goals',
+    'template':'templates','repeatPlan':'repeatPlans'
+  };
+
+  if(fnName === 'saveRow') {
+    var col = colMap[a[0]] || a[0];
+    var data = a[1];
+    db.collection(col).doc(data.id).set(data);
+
+  } else if(fnName === 'updateRow') {
+    var sheetName = a[0]; // '운동','영양','치수','일기'
+    var sheetToCol = {'운동':'workouts','영양':'nutrition','치수':'measurements','일기':'diary','목표':'goals'};
+    var col = sheetToCol[sheetName] || sheetName;
+    var data = a[1];
+    db.collection(col).doc(data.id).set(data);
+
+  } else if(fnName === 'deleteRow') {
+    var sheetName = a[0];
+    var id = a[1];
+    var sheetToCol = {'운동':'workouts','영양':'nutrition','치수':'measurements','일기':'diary'};
+    var col = sheetToCol[sheetName] || sheetName;
+    db.collection(col).doc(id).delete();
+
+  } else if(fnName === 'savePlanItem' || fnName === 'savePlanSetToWorkout') {
+    var data = a[0];
+    if(fnName === 'savePlanItem') {
+      db.collection('plans').doc(data.id).set(data);
+    } else {
+      db.collection('workouts').doc(data.id).set(data);
     }
-  } catch(e) { console.error('gasRun 실패:', e); addToOfflineQueue(fnName, args); }
+
+  } else if(fnName === 'updatePlanItem') {
+    var item = a[0];
+    db.collection('plans').doc(item.id).set(item);
+
+  } else if(fnName === 'deletePlanItem') {
+    var id = a[0];
+    db.collection('plans').doc(id).delete();
+
+  } else if(fnName === 'updatePlanOrders') {
+    var orders = a[0];
+    var batch = db.batch();
+    orders.forEach(function(o) {
+      batch.update(db.collection('plans').doc(o.id), {order: o.order});
+    });
+    batch.commit();
+
+  } else if(fnName === 'saveDiary') {
+    var data = a[0];
+    db.collection('diary').doc(data.id).set(data);
+
+  } else if(fnName === 'deleteDiary') {
+    var id = a[0];
+    db.collection('diary').doc(id).delete();
+
+  } else if(fnName === 'saveGoal') {
+    var item = a[0];
+    db.collection('goals').doc(item.id).set(item);
+
+  } else if(fnName === 'deleteGoal') {
+    var id = a[0];
+    db.collection('goals').doc(id).delete();
+
+  } else if(fnName === 'saveTemplate') {
+    var tpl = a[0];
+    db.collection('templates').doc(tpl.id).set(tpl);
+
+  } else if(fnName === 'deleteTemplate') {
+    var id = a[0];
+    db.collection('templates').doc(id).delete();
+
+  } else if(fnName === 'saveRepeatPlan') {
+    var item = a[0];
+    db.collection('repeatPlans').doc(item.id).set(item);
+
+  } else if(fnName === 'deleteRepeatPlan') {
+    var id = a[0];
+    db.collection('repeatPlans').doc(id).delete();
+
+  } else if(fnName === 'addExerciseRef') {
+    var data = a[0];
+    var exId = data.part + '_' + data.name;
+    db.collection('exercises').doc(exId).set(data);
+
+  } else if(fnName === 'updateExerciseYoutube') {
+    var part = a[0], name = a[1], youtube = a[2];
+    var exId = part + '_' + name;
+    db.collection('exercises').doc(exId).update({youtube: youtube});
+
+  } else {
+    console.warn('알 수 없는 gasRun 함수:', fnName);
+  }
 }
 
 // ========== 계산 유틸 ==========
@@ -2506,13 +2690,7 @@ function saveWorkout(){
   updateTodaySets(); updateTodayVolume(); updateAttendance(); updateTodayViews(); updateOneRmSelect();
   showToast('저장 완료!',true);
   document.getElementById('woMemo').value='';
-  // 5. 저장 후 무게 +2.5kg 자동 증가 제안
-  if(!editingId && wPart !== '유산소') {
-    var curWeight = parseFloat(data.weight) || 0;
-    var nextWeight = curWeight + 2.5;
-    document.getElementById('woWeight').value = nextWeight;
-    calculate1RM();
-  }
+
   if(document.getElementById('autoTimerToggle').checked){ startTimer(lastSetTimer); window.scrollTo({top:0,behavior:'smooth'}); }
 }
 
@@ -3726,7 +3904,10 @@ function initHapticFeedback(){
   },{passive:true});
 }
 
-window.onload=initApp;
+window.onload=function(){
+  initApp();
+  initFirestore();
+};
 </script>
 </body>
 </html>
