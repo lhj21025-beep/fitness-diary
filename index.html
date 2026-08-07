@@ -1080,12 +1080,10 @@ function loadDataFromFirestore() {
   }
 
   showToast('데이터 로딩 중...', true);
-  var today = getTodayStr();
-  var cutoff90 = subtractDays(today, 90);
 
-  // 병렬로 모든 컬렉션 로딩
+  // 날짜 필터 없이 전체 로딩 (날짜 형식 불일치 문제 방지)
   var promises = [
-    db.collection('workouts').where('date','>=',cutoff90).get(),
+    db.collection('workouts').get(),
     db.collection('nutrition').get(),
     db.collection('measurements').get(),
     db.collection('plans').get(),
@@ -1095,6 +1093,74 @@ function loadDataFromFirestore() {
     db.collection('repeatPlans').get(),
     db.collection('goals').get(),
   ];
+
+  Promise.all(promises).then(function(results) {
+    var workouts    = results[0].docs.map(function(d){return sanitizeRecord(d.data());});
+    var nutrition   = results[1].docs.map(function(d){return sanitizeRecord(d.data());});
+    var measure     = results[2].docs.map(function(d){return sanitizeRecord(d.data());});
+    var plans       = results[3].docs.map(function(d){return sanitizeRecord(d.data());});
+    var diary       = results[4].docs.map(function(d){return sanitizeRecord(d.data());});
+    var exercises   = results[5].docs.map(function(d){return d.data();});
+    var templates   = results[6].docs.map(function(d){return d.data();});
+    var repeatPlans = results[7].docs.map(function(d){return d.data();});
+    var goals       = results[8].docs.map(function(d){return sanitizeRecord(d.data());});
+
+    console.log('로딩 완료 - 운동:'+workouts.length+'건, 영양:'+nutrition.length+'건');
+
+    var dataRef = exercises.map(function(e){
+      return {type:'ex', part:e.part, name:e.name, unit:e.unit||'KG', typeFlag:e.typeFlag||'', youtube:e.youtube||''};
+    });
+
+    processInitData({
+      workout: workouts,
+      nutrition: nutrition,
+      measure: measure,
+      plan: plans,
+      diary: diary,
+      dataRef: dataRef,
+      templates: templates,
+      repeatPlans: repeatPlans,
+      goals: goals,
+      settings: {},
+      isPartial: false
+    });
+
+    isHistoryFullyLoaded = true;
+
+    // UI 갱신 - 타이밍 분산
+    setTimeout(function() {
+      updateAttendance();
+      updateWeeklyReport();
+      renderGoalsCard();
+      updateTodayVolume();
+      updateTodayViews();
+      updateTodayProtein();
+      renderDiaryList();
+      renderPlanList();
+      updatePlanExecRate();
+    }, 100);
+
+    setTimeout(function() {
+      updateCharts();
+      renderGoalWeight();
+      updateRestDayStats();
+      updatePartVolumeChart();
+      updatePlanVsActualChart();
+      renderHeatmap();
+      updateOneRmSelect();
+      setTimeout(scrollHeatmapToToday, 300);
+    }, 400);
+
+    showToast('로딩 완료! 운동 '+workouts.length+'건', true);
+
+  }).catch(function(e) {
+    console.error('Firestore 로딩 오류:', e);
+    showToast('데이터 로딩 실패: '+e.message, false);
+    processInitData({ workout:[], nutrition:[], measure:[], plan:[], diary:[], dataRef:[], templates:[], repeatPlans:[], goals:[], settings:{}, isPartial:false });
+  });
+}
+
+
 
   Promise.all(promises).then(function(results) {
     var workouts    = results[0].docs.map(function(d){return sanitizeRecord(d.data());});
