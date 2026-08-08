@@ -430,7 +430,14 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
         <button onclick="setNutritionTimeNow()" class="shrink-0 px-3 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-xs font-bold text-gray-600 dark:text-gray-300 active:bg-gray-200 transition-colors">지금</button>
       </div>
     </div>
-    <div class="input-row"><label class="input-label text-gray-600 dark:text-gray-400">영양제명</label><select id="nuName" onchange="updateNutritionInfo()" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white"><option value="">선택</option></select></div>
+    <div class="input-row">
+      <label class="input-label text-gray-600 dark:text-gray-400">영양제명</label>
+      <div class="flex gap-2 w-full">
+        <select id="nuName" onchange="updateNutritionInfo()" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white flex-1"><option value="">선택</option></select>
+        <button onclick="openNutritionRefModal(null)" class="shrink-0 px-3 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-lg border border-green-200 dark:border-green-700 text-xs font-bold" title="영양제 추가"><i class="fa-solid fa-plus"></i></button>
+        <button onclick="openNutritionRefModal(document.getElementById('nuName').value)" class="shrink-0 px-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-lg border border-gray-200 dark:border-gray-600 text-xs font-bold" title="선택한 영양제 수정"><i class="fa-solid fa-pen"></i></button>
+      </div>
+    </div>
     <div class="input-row">
       <label class="input-label text-gray-600 dark:text-gray-400">수량</label>
       <div class="flex flex-grow gap-2">
@@ -783,6 +790,50 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
       </div>
     </div>
     <p class="text-xs text-gray-400 dark:text-gray-500 mt-4 text-center">오늘 날짜는 주황색 테두리로 표시됩니다</p>
+  </div>
+</div>
+
+<!-- 영양제 추가/수정 모달 -->
+<div id="nutritionRefModal" class="modal" style="z-index:270;" onclick="closeModalOnBg(event,'nutritionRefModal')">
+  <div class="modal-content bg-white dark:bg-gray-800 pb-10">
+    <div class="flex justify-between items-center mb-4">
+      <h3 id="nutritionRefModalTitle" class="text-lg font-bold dark:text-white"><i class="fa-solid fa-apple-whole mr-2 text-green-500"></i>영양제 추가</h3>
+      <button onclick="document.getElementById('nutritionRefModal').classList.remove('active')" class="text-gray-500 dark:text-gray-300 text-2xl"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">영양제명</label>
+        <input type="text" id="nuRefName" placeholder="예: 글루타민, 닭가슴살, 프로틴..."
+          class="w-full border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-sm">
+      </div>
+      <div class="flex gap-3">
+        <div class="flex-1">
+          <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">기본 수량</label>
+          <input type="number" id="nuRefQty" placeholder="예: 5" min="0" step="0.5"
+            class="w-full border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-sm text-center font-bold">
+        </div>
+        <div class="flex-1">
+          <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">단위</label>
+          <div class="flex gap-1 flex-wrap" id="nuRefUnitBtns">
+            <button onclick="setNuRefUnit('g')"    class="nu-unit-btn px-3 py-2 rounded-lg border text-sm font-bold border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">g</button>
+            <button onclick="setNuRefUnit('mg')"   class="nu-unit-btn px-3 py-2 rounded-lg border text-sm font-bold border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">mg</button>
+            <button onclick="setNuRefUnit('ml')"   class="nu-unit-btn px-3 py-2 rounded-lg border text-sm font-bold border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">ml</button>
+            <button onclick="setNuRefUnit('정')"   class="nu-unit-btn px-3 py-2 rounded-lg border text-sm font-bold border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">정</button>
+            <button onclick="setNuRefUnit('캡슐')" class="nu-unit-btn px-3 py-2 rounded-lg border text-sm font-bold border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">캡슐</button>
+            <button onclick="setNuRefUnit('스쿱')" class="nu-unit-btn px-3 py-2 rounded-lg border text-sm font-bold border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">스쿱</button>
+            <button onclick="setNuRefUnit('개')"   class="nu-unit-btn px-3 py-2 rounded-lg border text-sm font-bold border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">개</button>
+            <button onclick="setNuRefUnit('포')"   class="nu-unit-btn px-3 py-2 rounded-lg border text-sm font-bold border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">포</button>
+          </div>
+          <input type="text" id="nuRefUnit" placeholder="직접입력"
+            class="w-full border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-sm mt-2 text-center font-bold"
+            oninput="updateNuRefUnitBtns()">
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-6">
+      <button id="nuRefDeleteBtn" onclick="deleteNutritionRef()" class="hidden px-4 py-3 bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 rounded-lg font-bold border border-red-200 dark:border-red-800 text-sm"><i class="fa-solid fa-trash mr-1"></i>삭제</button>
+      <button onclick="saveNutritionRef()" class="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold"><i class="fa-solid fa-floppy-disk mr-1"></i>저장</button>
+    </div>
   </div>
 </div>
 
@@ -2717,10 +2768,130 @@ function saveWorkout(){
   if(document.getElementById('autoTimerToggle').checked){ startTimer(lastSetTimer); window.scrollTo({top:0,behavior:'smooth'}); }
 }
 
+// ========== 영양제 추가/수정 ==========
+var nuRefEditingName = null; // 수정 중인 영양제명 (null이면 추가)
+
+function openNutritionRefModal(name) {
+  nuRefEditingName = name || null;
+  var titleEl = document.getElementById('nutritionRefModalTitle');
+  var deleteBtn = document.getElementById('nuRefDeleteBtn');
+
+  if(name && db.refNutrition[name]) {
+    // 수정 모드
+    titleEl.innerHTML = '<i class="fa-solid fa-pen mr-2 text-yellow-500"></i>영양제 수정';
+    document.getElementById('nuRefName').value = name;
+    document.getElementById('nuRefName').readOnly = true;
+    document.getElementById('nuRefName').classList.add('opacity-60');
+    document.getElementById('nuRefQty').value = db.refNutrition[name].qty || '';
+    document.getElementById('nuRefUnit').value = db.refNutrition[name].unit || '';
+    deleteBtn.classList.remove('hidden');
+    updateNuRefUnitBtns();
+  } else {
+    // 추가 모드
+    titleEl.innerHTML = '<i class="fa-solid fa-plus mr-2 text-green-500"></i>영양제 추가';
+    document.getElementById('nuRefName').value = '';
+    document.getElementById('nuRefName').readOnly = false;
+    document.getElementById('nuRefName').classList.remove('opacity-60');
+    document.getElementById('nuRefQty').value = '';
+    document.getElementById('nuRefUnit').value = '';
+    deleteBtn.classList.add('hidden');
+    updateNuRefUnitBtns();
+  }
+  document.getElementById('nutritionRefModal').classList.add('active');
+}
+
+function setNuRefUnit(unit) {
+  document.getElementById('nuRefUnit').value = unit;
+  updateNuRefUnitBtns();
+}
+
+function updateNuRefUnitBtns() {
+  var cur = document.getElementById('nuRefUnit').value;
+  document.querySelectorAll('.nu-unit-btn').forEach(function(btn) {
+    var isSelected = btn.innerText === cur;
+    btn.className = 'nu-unit-btn px-3 py-2 rounded-lg border text-sm font-bold transition-colors '
+      + (isSelected
+        ? 'bg-green-500 text-white border-green-500'
+        : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300');
+  });
+}
+
+function saveNutritionRef() {
+  var name = document.getElementById('nuRefName').value.trim();
+  var qty  = parseFloat(document.getElementById('nuRefQty').value) || 0;
+  var unit = document.getElementById('nuRefUnit').value.trim();
+
+  if(!name) { showToast('영양제명을 입력해주세요.', false); return; }
+  if(!unit) { showToast('단위를 선택하거나 입력해주세요.', false); return; }
+
+  var doc = { id: 'nut_'+name, type:'nut', name:name, unit:unit, qty:qty };
+
+  // db 업데이트
+  db.refNutrition[name] = { unit:unit, qty:qty };
+
+  // Firestore 저장
+  if(window.firestoreDb) {
+    window.firestoreDb.collection('nutritionRef').doc('nut_'+name).set(doc)
+      .then(function(){ showToast('저장됐습니다!', true); })
+      .catch(function(e){ showToast('저장 실패: '+e.message, false); });
+  }
+
+  // GAS에도 저장 (구글시트 동기화)
+  gasRun('addNutritionRef', doc);
+
+  // 영양제 선택 콤보박스 갱신
+  updateNutritionList();
+
+  // 새로 추가한 영양제 자동 선택
+  document.getElementById('nuName').value = name;
+  updateNutritionInfo();
+
+  document.getElementById('nutritionRefModal').classList.remove('active');
+  if(nuRefEditingName) {
+    showToast('['+name+'] 수정됐습니다!', true);
+  } else {
+    showToast('['+name+'] 추가됐습니다!', true);
+  }
+}
+
+function deleteNutritionRef() {
+  var name = nuRefEditingName;
+  if(!name) return;
+
+  document.getElementById('confirmText').innerText = '['+name+'] 영양제를 삭제할까요?';
+  document.getElementById('confirmBtn').onclick = function() {
+    delete db.refNutrition[name];
+    if(window.firestoreDb) {
+      window.firestoreDb.collection('nutritionRef').doc('nut_'+name).delete();
+    }
+    gasRun('deleteNutritionRef', name);
+    updateNutritionList();
+    document.getElementById('nuName').value = '';
+    document.getElementById('nuQty').value = '';
+    document.getElementById('nuUnit').value = '';
+    document.getElementById('nutritionRefModal').classList.remove('active');
+    document.getElementById('confirmModal').classList.remove('active');
+    showToast('['+name+'] 삭제됐습니다.', true);
+  };
+  document.getElementById('confirmModal').classList.add('active');
+}
+
+function updateNutritionList() {
+  var sel = document.getElementById('nuName');
+  var cur = sel.value;
+  sel.innerHTML = '<option value="">선택</option>';
+  Object.keys(db.refNutrition).sort().forEach(function(name) {
+    sel.innerHTML += '<option value="'+name+'">'+name+'</option>';
+  });
+  if(cur && db.refNutrition[cur]) sel.value = cur;
+}
+
 function updateNutritionInfo(){
   var name=document.getElementById('nuName').value;
   if(name&&db.refNutrition[name]){ if(!editingId) document.getElementById('nuQty').value=db.refNutrition[name].qty; document.getElementById('nuUnit').value=db.refNutrition[name].unit; }
 }
+
+
 function setNutritionTimeNow() {
   var now = new Date();
   document.getElementById('nuTime').value = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
