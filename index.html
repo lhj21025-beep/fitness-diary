@@ -11,6 +11,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config={darkMode:'class',theme:{extend:{}}}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <style>
 body{font-family:'Pretendard',sans-serif;overflow-x:hidden;transition:background-color 0.3s;padding-bottom:220px;}
@@ -219,10 +220,15 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     </div>
   </div>
 
-  <!-- 사용설명서 버튼 -->
-  <button onclick="openManualModal()" class="w-full mb-4 py-3 bg-gray-800 dark:bg-gray-700 text-white font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 active:opacity-80 transition-opacity">
-    <i class="fa-solid fa-book"></i>앱 사용설명서 보기
-  </button>
+  <!-- 사용설명서 + 내보내기 버튼 -->
+  <div class="flex gap-2 mb-4">
+    <button onclick="openManualModal()" class="flex-1 py-3 bg-gray-800 dark:bg-gray-700 text-white font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 active:opacity-80 transition-opacity">
+      <i class="fa-solid fa-book"></i>사용설명서
+    </button>
+    <button onclick="openExportModal()" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-sm flex items-center justify-center gap-2 active:opacity-80 transition-opacity">
+      <i class="fa-solid fa-file-excel"></i>데이터 내보내기
+    </button>
+  </div>
 </div>
 
 <!-- ===== 계획 탭 ===== -->
@@ -881,6 +887,49 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
   </div>
 </div>
 
+<!-- 데이터 내보내기 모달 -->
+<div id="exportModal" class="modal" style="z-index:280;" onclick="closeModalOnBg(event,'exportModal')">
+  <div class="modal-content bg-white dark:bg-gray-800 pb-10">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-lg font-bold dark:text-white"><i class="fa-solid fa-file-excel mr-2 text-green-600"></i>데이터 내보내기</h3>
+      <button onclick="document.getElementById('exportModal').classList.remove('active')" class="text-gray-500 dark:text-gray-300 text-2xl"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">내보낼 데이터를 선택하세요. 엑셀 파일(.xlsx)로 다운로드됩니다.</p>
+    <div class="space-y-2 mb-6">
+      <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+        <input type="checkbox" id="exp_workout" checked class="w-4 h-4 accent-blue-600">
+        <i class="fa-solid fa-dumbbell text-blue-500 w-5"></i>
+        <span class="text-sm font-bold dark:text-white">운동 기록</span>
+        <span id="exp_workout_count" class="ml-auto text-xs text-gray-400"></span>
+      </label>
+      <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+        <input type="checkbox" id="exp_nutrition" checked class="w-4 h-4 accent-green-600">
+        <i class="fa-solid fa-apple-whole text-green-500 w-5"></i>
+        <span class="text-sm font-bold dark:text-white">영양 기록</span>
+        <span id="exp_nutrition_count" class="ml-auto text-xs text-gray-400"></span>
+      </label>
+      <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+        <input type="checkbox" id="exp_measure" checked class="w-4 h-4 accent-purple-600">
+        <i class="fa-solid fa-ruler text-purple-500 w-5"></i>
+        <span class="text-sm font-bold dark:text-white">치수 기록</span>
+        <span id="exp_measure_count" class="ml-auto text-xs text-gray-400"></span>
+      </label>
+      <label class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer">
+        <input type="checkbox" id="exp_diary" checked class="w-4 h-4 accent-yellow-600">
+        <i class="fa-solid fa-book-open text-yellow-500 w-5"></i>
+        <span class="text-sm font-bold dark:text-white">일기</span>
+        <span id="exp_diary_count" class="ml-auto text-xs text-gray-400"></span>
+      </label>
+    </div>
+    <div id="exportProgress" class="hidden mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-700 dark:text-blue-300 text-center">
+      <i class="fa-solid fa-spinner fa-spin mr-2"></i>내보내는 중...
+    </div>
+    <button onclick="exportToExcel()" class="w-full bg-green-600 text-white font-bold py-3 rounded-xl active:bg-green-700 transition-colors">
+      <i class="fa-solid fa-download mr-2"></i>엑셀로 다운로드
+    </button>
+  </div>
+</div>
+
 <!-- 사용설명서 모달 -->
 <div id="manualModal" class="modal" style="z-index:280;" onclick="closeModalOnBg(event,'manualModal')">
   <div class="modal-content bg-white dark:bg-gray-800 h-5/6 flex flex-col">
@@ -920,6 +969,91 @@ var bodyWeightCache = {};
 
 // ========== 초기화 ==========
 // ========== 사용설명서 ==========
+// ========== 데이터 내보내기 ==========
+function openExportModal() {
+  // 데이터 건수 표시
+  document.getElementById('exp_workout_count').innerText = db.workout.length + '건';
+  document.getElementById('exp_nutrition_count').innerText = db.nutrition.length + '건';
+  document.getElementById('exp_measure_count').innerText = db.measure.length + '건';
+  document.getElementById('exp_diary_count').innerText = db.diary.length + '건';
+  document.getElementById('exportProgress').classList.add('hidden');
+  document.getElementById('exportModal').classList.add('active');
+}
+
+function exportToExcel() {
+  var progress = document.getElementById('exportProgress');
+  progress.classList.remove('hidden');
+
+  setTimeout(function() {
+    try {
+      var wb = XLSX.utils.book_new();
+
+      // 운동 기록
+      if(document.getElementById('exp_workout').checked && db.workout.length > 0) {
+        var workoutData = [['ID','날짜','부위','운동명','중량','단위','횟수','메모']];
+        db.workout.sort(function(a,b){return a.date.localeCompare(b.date);}).forEach(function(w) {
+          workoutData.push([w.id, w.date, w.part, w.name, w.weight, w.unit||'KG', w.reps, w.rawMemo||w.memo||'']);
+        });
+        var ws = XLSX.utils.aoa_to_sheet(workoutData);
+        ws['!cols'] = [{wch:20},{wch:12},{wch:10},{wch:20},{wch:8},{wch:6},{wch:6},{wch:30}];
+        XLSX.utils.book_append_sheet(wb, ws, '운동기록');
+      }
+
+      // 영양 기록
+      if(document.getElementById('exp_nutrition').checked && db.nutrition.length > 0) {
+        var nutritionData = [['ID','날짜','시간','영양제명','수량','단위']];
+        db.nutrition.sort(function(a,b){return (a.date+a.time).localeCompare(b.date+b.time);}).forEach(function(n) {
+          nutritionData.push([n.id, n.date, n.time, n.name, n.qty, n.unit]);
+        });
+        var ws2 = XLSX.utils.aoa_to_sheet(nutritionData);
+        ws2['!cols'] = [{wch:20},{wch:12},{wch:8},{wch:20},{wch:8},{wch:8}];
+        XLSX.utils.book_append_sheet(wb, ws2, '영양기록');
+      }
+
+      // 치수 기록
+      if(document.getElementById('exp_measure').checked && db.measure.length > 0) {
+        var measureData = [['ID','날짜','체중(kg)','팔(좌,cm)','팔(우,cm)','가슴(cm)']];
+        db.measure.forEach(function(m) {
+          measureData.push([m.id, m.date, m.weight, m.armL, m.armR, m.chest]);
+        });
+        var ws3 = XLSX.utils.aoa_to_sheet(measureData);
+        ws3['!cols'] = [{wch:20},{wch:12},{wch:10},{wch:10},{wch:10},{wch:10}];
+        XLSX.utils.book_append_sheet(wb, ws3, '치수기록');
+      }
+
+      // 일기
+      if(document.getElementById('exp_diary').checked && db.diary.length > 0) {
+        var diaryData = [['ID','날짜','컨디션','수면(h)','식사','메모']];
+        db.diary.sort(function(a,b){return a.date.localeCompare(b.date);}).forEach(function(d) {
+          diaryData.push([d.id, d.date, d.condition||'', d.sleep||'', d.meal||'', d.memo||'']);
+        });
+        var ws4 = XLSX.utils.aoa_to_sheet(diaryData);
+        ws4['!cols'] = [{wch:20},{wch:12},{wch:8},{wch:8},{wch:20},{wch:40}];
+        XLSX.utils.book_append_sheet(wb, ws4, '일기');
+      }
+
+      if(wb.SheetNames.length === 0) {
+        showToast('내보낼 데이터를 선택해주세요.', false);
+        progress.classList.add('hidden');
+        return;
+      }
+
+      // 파일명: fitness_diary_YYYYMMDD.xlsx
+      var today = getTodayStr().replace(/-/g,'');
+      XLSX.writeFile(wb, 'fitness_diary_' + today + '.xlsx');
+
+      progress.classList.add('hidden');
+      document.getElementById('exportModal').classList.remove('active');
+      showToast('다운로드 완료!', true);
+
+    } catch(e) {
+      console.error('내보내기 오류:', e);
+      progress.classList.add('hidden');
+      showToast('내보내기 실패: ' + e.message, false);
+    }
+  }, 100);
+}
+
 function openManualModal() {
   var sections = [
     {
