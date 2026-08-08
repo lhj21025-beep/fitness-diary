@@ -1266,6 +1266,7 @@ function loadDataFromFirestore() {
 
   showToast('데이터 로딩 중...', true);
 
+  // 초기 전체 데이터 로딩
   var promises = [
     db.collection('workouts').get(),
     db.collection('nutrition').get(),
@@ -1293,7 +1294,6 @@ function loadDataFromFirestore() {
 
     console.log('로딩 - 운동:'+workouts.length+'건, 영양:'+nutrition.length+'건');
 
-    // exercises + nutritionRef → dataRef 포맷으로 변환
     var dataRef = exercises.map(function(e){
       return {type:'ex', part:e.part, name:e.name, unit:e.unit||'KG', typeFlag:e.typeFlag||'', youtube:e.youtube||''};
     });
@@ -1325,11 +1325,124 @@ function loadDataFromFirestore() {
 
     showToast('로딩 완료! 운동 '+workouts.length+'건', true);
 
+    // 실시간 리스너 등록 (초기 로딩 완료 후)
+    setupRealtimeListeners(db);
+
   }).catch(function(e) {
     console.error('Firestore 로딩 오류:', e);
     showToast('데이터 로딩 실패: '+e.message, false);
     processInitData({ workout:[], nutrition:[], measure:[], plan:[], diary:[], dataRef:[], templates:[], repeatPlans:[], goals:[], settings:{}, isPartial:false });
   });
+}
+
+function setupRealtimeListeners(db) {
+  // 영양제 참조데이터 실시간 동기화 (다른 기기에서 추가/수정 시 즉시 반영)
+  db.collection('nutritionRef').onSnapshot(function(snapshot) {
+    snapshot.docChanges().forEach(function(change) {
+      var d = change.doc.data();
+      if(change.type === 'added' || change.type === 'modified') {
+        db_ref_nutrition_update(d);
+      } else if(change.type === 'removed') {
+        delete window.db.refNutrition[d.name];
+        updateNutritionList();
+      }
+    });
+  }, function(e){ console.error('nutritionRef 리스너 오류:', e); });
+
+  // 운동종목 실시간 동기화
+  db.collection('exercises').onSnapshot(function(snapshot) {
+    snapshot.docChanges().forEach(function(change) {
+      var d = change.doc.data();
+      if(change.type === 'added' || change.type === 'modified') {
+        if(!window.db.refExercise[d.part]) window.db.refExercise[d.part] = {};
+        window.db.refExercise[d.part][d.name] = {unit:d.unit||'KG', typeFlag:d.typeFlag||'', youtube:d.youtube||''};
+      }
+    });
+  }, function(e){ console.error('exercises 리스너 오류:', e); });
+
+  // 영양 기록 실시간 동기화
+  db.collection('nutrition').onSnapshot(function(snapshot) {
+    snapshot.docChanges().forEach(function(change) {
+      var d = sanitizeRecord(change.doc.data());
+      if(change.type === 'added') {
+        if(!window.db.nutrition.find(function(n){return n.id===d.id;})) {
+          window.db.nutrition.push(d);
+          updateTodayProtein(); updateTodayViews();
+        }
+      } else if(change.type === 'modified') {
+        var idx = window.db.nutrition.findIndex(function(n){return n.id===d.id;});
+        if(idx > -1) { window.db.nutrition[idx] = d; updateTodayProtein(); updateTodayViews(); }
+      } else if(change.type === 'removed') {
+        window.db.nutrition = window.db.nutrition.filter(function(n){return n.id!==d.id;});
+        updateTodayProtein(); updateTodayViews();
+      }
+    });
+  }, function(e){ console.error('nutrition 리스너 오류:', e); });
+
+  // 운동 기록 실시간 동기화
+  db.collection('workouts').onSnapshot(function(snapshot) {
+    snapshot.docChanges().forEach(function(change) {
+      var d = sanitizeRecord(change.doc.data());
+      if(change.type === 'added') {
+        if(!window.db.workout.find(function(w){return w.id===d.id;})) {
+          window.db.workout.push(d);
+          updateAttendance(); updateTodayVolume(); updateTodayViews();
+        }
+      } else if(change.type === 'modified') {
+        var idx = window.db.workout.findIndex(function(w){return w.id===d.id;});
+        if(idx > -1) { window.db.workout[idx] = d; }
+      } else if(change.type === 'removed') {
+        window.db.workout = window.db.workout.filter(function(w){return w.id!==d.id;});
+        updateAttendance(); updateTodayVolume(); updateTodayViews();
+      }
+    });
+  }, function(e){ console.error('workouts 리스너 오류:', e); });
+
+  // 치수 실시간 동기화
+  db.collection('measurements').onSnapshot(function(snapshot) {
+    snapshot.docChanges().forEach(function(change) {
+      var d = sanitizeRecord(change.doc.data());
+      if(change.type === 'added') {
+        if(!window.db.measure.find(function(m){return m.id===d.id;})) {
+          window.db.measure.push(d);
+          window.db.measure.sort(function(a,b){return a.date.localeCompare(b.date);});
+          updateCharts();
+        }
+      } else if(change.type === 'modified') {
+        var idx = window.db.measure.findIndex(function(m){return m.id===d.id;});
+        if(idx > -1) { window.db.measure[idx] = d; updateCharts(); }
+      } else if(change.type === 'removed') {
+        window.db.measure = window.db.measure.filter(function(m){return m.id!==d.id;});
+        updateCharts();
+      }
+    });
+  }, function(e){ console.error('measurements 리스너 오류:', e); });
+
+  // 계획 실시간 동기화
+  db.collection('plans').onSnapshot(function(snapshot) {
+    snapshot.docChanges().forEach(function(change) {
+      var d = sanitizeRecord(change.doc.data());
+      if(change.type === 'added') {
+        if(!window.db.plan.find(function(p){return p.id===d.id;})) {
+          window.db.plan.push(d);
+          renderPlanList(); updatePlanExecRate();
+        }
+      } else if(change.type === 'modified') {
+        var idx = window.db.plan.findIndex(function(p){return p.id===d.id;});
+        if(idx > -1) { window.db.plan[idx] = d; renderPlanList(); updatePlanExecRate(); }
+      } else if(change.type === 'removed') {
+        window.db.plan = window.db.plan.filter(function(p){return p.id!==d.id;});
+        renderPlanList(); updatePlanExecRate();
+      }
+    });
+  }, function(e){ console.error('plans 리스너 오류:', e); });
+
+  console.log('실시간 리스너 등록 완료');
+}
+
+function db_ref_nutrition_update(d) {
+  window.db.refNutrition[d.name] = { unit: d.unit||'', qty: d.qty||0 };
+  updateNutritionList();
 }
 function processInitData(data) {
   bodyWeightCache = {};
