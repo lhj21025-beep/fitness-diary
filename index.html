@@ -1091,6 +1091,7 @@ function loadDataFromFirestore() {
     db.collection('templates').get(),
     db.collection('repeatPlans').get(),
     db.collection('goals').get(),
+    db.collection('nutritionRef').get(),
   ];
 
   Promise.all(promises).then(function(results) {
@@ -1103,11 +1104,16 @@ function loadDataFromFirestore() {
     var templates   = results[6].docs.map(function(d){return d.data();});
     var repeatPlans = results[7].docs.map(function(d){return d.data();});
     var goals       = results[8].docs.map(function(d){return sanitizeRecord(d.data());});
+    var nutritionRef= results[9].docs.map(function(d){return d.data();});
 
     console.log('로딩 - 운동:'+workouts.length+'건, 영양:'+nutrition.length+'건');
 
+    // exercises + nutritionRef → dataRef 포맷으로 변환
     var dataRef = exercises.map(function(e){
       return {type:'ex', part:e.part, name:e.name, unit:e.unit||'KG', typeFlag:e.typeFlag||'', youtube:e.youtube||''};
+    });
+    nutritionRef.forEach(function(n){
+      dataRef.push({type:'nut', name:n.name, unit:n.unit||'', qty:n.qty||0});
     });
 
     processInitData({
