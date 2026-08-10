@@ -1441,7 +1441,7 @@ function setupRealtimeListeners(db) {
 }
 
 function db_ref_nutrition_update(d) {
-  window.db.refNutrition[d.name] = { unit: d.unit||'', qty: d.qty||0 };
+  window.db.refNutrition[d.name] = { unit: d.unit||'', qty: d.qty||0, protein: d.protein||0 };
   updateNutritionList();
 }
 function processInitData(data) {
@@ -1660,12 +1660,27 @@ function calcDuration(workouts) {
   var t=0; workouts.forEach(w=>{ if(w.duration){var m=w.duration.match(/(\d+)분/);var s=w.duration.match(/(\d+)초/);t+=(m?parseInt(m[1]):0)*60+(s?parseInt(s[1]):0);} }); return Math.round(t/60);
 }
 function calculateProtein(nData) {
-  var t=0; nData.forEach(n=>{ var name=(n.name||'').toLowerCase();var qty=parseFloat(n.qty)||0;
-    if(name.includes('닭가슴살'))t+=qty*0.20;
-    else if(name.includes('더단백(250)'))t+=20; else if(name.includes('더단백(350)'))t+=35;
-    else if(name.includes('계란')||name.includes('달걀'))t+=qty*7;
-    else if(name.includes('보충제')||name.includes('프로틴'))t+=qty*25;
-  }); return t;
+  var t = 0;
+  nData.forEach(function(n) {
+    var name = n.name || '';
+    var qty = parseFloat(n.qty) || 0;
+    // nutritionRef에서 단백질 정보 가져오기
+    var ref = window.db.refNutrition && window.db.refNutrition[name];
+    if(ref && ref.protein > 0) {
+      var defaultQty = parseFloat(ref.qty) || 1;
+      // 기본수량 대비 실제 수량 비율로 계산
+      t += ref.protein * (qty / defaultQty);
+    } else {
+      // fallback: 기존 하드코딩 방식
+      var nameLower = name.toLowerCase();
+      if(nameLower.includes('닭가슴살')) t += qty * 0.20;
+      else if(nameLower.includes('더단백(250)')) t += 20 * (qty / 250);
+      else if(nameLower.includes('더단백(350)')) t += 30 * (qty / 350);
+      else if(nameLower.includes('계란') || nameLower.includes('달걀')) t += qty * 7;
+      else if(nameLower.includes('보충제') || nameLower.includes('프로틴')) t += qty * 0.25;
+    }
+  });
+  return Math.round(t * 10) / 10;
 }
 function calculate1RM() {
   var wgt=parseFloat(document.getElementById('woWeight').value)||0;
@@ -2823,9 +2838,32 @@ function updateTodayViews(){
   var wData=db.workout.filter(w=>w.date===tStr);
   var wv=document.getElementById('workoutTodayView');
   if(wv) wv.innerHTML=wData.length===0?'<div class="bg-white dark:bg-gray-800 rounded-xl p-4 text-center text-sm text-gray-500 border border-gray-200 dark:border-gray-700">오늘 기록된 운동이 없습니다.</div>':buildWorkoutAccordionHTML(wData,'today-w');
-  var nData=db.nutrition.filter(n=>n.date===tStr).sort((a,b)=>a.time.localeCompare(b.time));
+  var nData=db.nutrition.filter(function(n){return n.date===tStr;}).sort(function(a,b){return a.time.localeCompare(b.time);});
   var nv=document.getElementById('nutritionTodayView');
-  if(nv){ if(!nData.length){nv.innerHTML='<div class="bg-white dark:bg-gray-800 rounded-xl p-4 text-center text-sm text-gray-500 border border-gray-200 dark:border-gray-700">오늘 기록된 영양이 없습니다.</div>';}else{nv.innerHTML='<ul class="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-200 dark:border-gray-700 space-y-2 text-sm">'+nData.map(n=>`<li class="history-item flex justify-between border-b border-gray-100 dark:border-gray-700 border-dashed pb-2 last:border-0 p-1 rounded cursor-pointer" data-type="nutrition" data-id="${n.id}"><span class="text-gray-500 w-12">${n.time}</span><span class="flex-grow">${n.name}</span><span class="font-bold text-green-600">${n.qty}${n.unit}</span></li>`).join('')+'</ul>';} }
+  if(nv){
+    if(!nData.length){
+      nv.innerHTML='<div class="bg-white dark:bg-gray-800 rounded-xl p-4 text-center text-sm text-gray-500 border border-gray-200 dark:border-gray-700">오늘 기록된 영양이 없습니다.</div>';
+    } else {
+      var totalProtein = calculateProtein(nData);
+      nv.innerHTML='<ul class="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-200 dark:border-gray-700 space-y-2 text-sm">'
+        + nData.map(function(n){
+          // 단백질 개별 계산
+          var ref = window.db.refNutrition && window.db.refNutrition[n.name];
+          var proteinStr = '';
+          if(ref && ref.protein > 0) {
+            var defaultQty = parseFloat(ref.qty) || 1;
+            var p = Math.round(ref.protein * (parseFloat(n.qty)||0) / defaultQty * 10) / 10;
+            proteinStr = '<span class="text-xs text-blue-500 ml-1">(단백질 '+p+'g)</span>';
+          }
+          return '<li class="history-item flex justify-between border-b border-gray-100 dark:border-gray-700 border-dashed pb-2 last:border-0 p-1 rounded cursor-pointer" data-type="nutrition" data-id="'+n.id+'">'
+            +'<span class="text-gray-500 w-12">'+n.time+'</span>'
+            +'<span class="flex-grow">'+n.name+'</span>'
+            +'<span class="font-bold text-green-600">'+n.qty+n.unit+proteinStr+'</span>'
+            +'</li>';
+        }).join('')
+        +'</ul>';
+    }
+  }
 }
 function updateTodayProtein(){
   var date=(document.getElementById('nuDate') ? document.getElementById('nuDate').value : undefined)||getTodayStr();
