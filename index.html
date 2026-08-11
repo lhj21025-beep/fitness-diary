@@ -1298,7 +1298,7 @@ function loadDataFromFirestore() {
       return {type:'ex', part:e.part, name:e.name, unit:e.unit||'KG', typeFlag:e.typeFlag||'', youtube:e.youtube||''};
     });
     nutritionRef.forEach(function(n){
-      dataRef.push({type:'nut', name:n.name, unit:n.unit||'', qty:n.qty||0});
+      dataRef.push({type:'nut', name:n.name, unit:n.unit||'', qty:n.qty||0, protein:n.protein||0});
     });
 
     processInitData({
@@ -1361,7 +1361,7 @@ function db_ref_nutrition_update(d) {
   db.refExercise = {}; db.refNutrition = {};
   (data.dataRef||[]).forEach(row => {
     if(row.type==='ex'){ if(!db.refExercise[row.part]) db.refExercise[row.part]={}; db.refExercise[row.part][row.name]={unit:row.unit,typeFlag:row.typeFlag||'',youtube:row.youtube||''}; }
-    else if(row.type==='nut') db.refNutrition[row.name]={unit:row.unit,qty:row.qty};
+    else if(row.type==='nut') db.refNutrition[row.name]={unit:row.unit,qty:row.qty,protein:row.protein||0};
   });
 
   setupSelects(); setupPlanSelects(); initPlanSets();
@@ -3005,7 +3005,7 @@ function saveNutritionRef() {
   var doc = { id: 'nut_'+name, type:'nut', name:name, unit:unit, qty:qty };
 
   // db 업데이트
-  db.refNutrition[name] = { unit:unit, qty:qty };
+  db.refNutrition[name] = { unit:unit, qty:qty, protein: db.refNutrition[name] ? (db.refNutrition[name].protein||0) : 0 };
 
   // Firestore 저장
   if(window.firestoreDb) {
