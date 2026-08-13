@@ -1784,17 +1784,20 @@ function loadAIFeedback() {
       return name+' 이전('+lastDate+'): '+lastStr;
     }).join(nl);
 
-    // 계획 달성률
+    // 계획 달성률 (실제 운동 볼륨 기준)
     var planRate = '';
     if(todayPlan.length > 0){
-      var planTotal=0, planDone=0;
+      var totalPlanVol=0;
       todayPlan.forEach(function(item){
         (item.sets||[]).forEach(function(s){
-          if(item.part==='__super__'){planTotal+=2;if(s.done1)planDone++;if(s.done2)planDone++;}
-          else{planTotal++;if(s.done)planDone++;}
+          if(item.part==='__super__') totalPlanVol+=(s.weight1||0)*(s.reps1||0)+(s.weight2||0)*(s.reps2||0);
+          else totalPlanVol+=(s.weight||0)*(s.reps||0);
         });
       });
-      if(planTotal > 0) planRate = '계획달성률: '+Math.round(planDone/planTotal*100)+'% ('+planDone+'/'+planTotal+'세트)';
+      if(totalPlanVol > 0) {
+        var rate = Math.round(totalVol/totalPlanVol*100);
+        planRate = '계획달성률: '+rate+'% (계획볼륨 '+totalPlanVol.toLocaleString()+'kg 대비 실제 '+totalVol.toLocaleString()+'kg)';
+      }
     }
 
     prompt = '당신은 10년 경력의 퍼스널 트레이너입니다. 아래 오늘 운동 데이터를 분석해서 매우 구체적이고 날카로운 피드백을 한국어로 주세요.'
@@ -2362,9 +2365,9 @@ function openDailyPopup(dateStr) {
   if(dailyDur>0) volArr.push('총 시간: '+dailyDur+'분');
   var totalPro=calculateProtein(nData);
   if(totalPro>0) volArr.push('단백질: '+Math.round(totalPro)+'g');
-  var planTotal=0, planDone=0;
-  pData.forEach(function(item){ (item.sets||[]).forEach(function(s){ if(item.part==='__super__'){planTotal+=2;if(s.done1)planDone++;if(s.done2)planDone++;}else{planTotal++;if(s.done)planDone++;} }); });
-  if(planTotal>0) volArr.push('계획실행률: '+Math.round(planDone/planTotal*100)+'%');
+  var planTotal=0;
+  pData.forEach(function(item){ (item.sets||[]).forEach(function(s){ if(item.part==='__super__') planTotal+=(s.weight1||0)*(s.reps1||0)+(s.weight2||0)*(s.reps2||0); else planTotal+=(s.weight||0)*(s.reps||0); }); });
+  if(planTotal>0) volArr.push('계획실행률: '+Math.round(dailyVol/planTotal*100)+'%');
   document.getElementById('dailyPopupTitle').innerHTML=dateStr+'<span class="text-sm font-normal text-blue-500 ml-2">('+volArr.join(', ')+')</span>';
 
   // 날짜 바로가기 버튼
@@ -3391,19 +3394,28 @@ function renderPlanList(){
   var items=db.plan.filter(function(p){return p.date===date;}).sort(function(a,b){return (a.order||0)-(b.order||0);});
   if(!items.length){container.innerHTML='<div class="text-center text-sm text-gray-400 dark:text-gray-500 py-6">저장된 계획이 없습니다.</div>';return;}
 
+  // 해당 날짜 실제 운동 볼륨 (db.workout 기준 - 계획 초과, 추가 종목 모두 포함)
+  var dateWorkouts = db.workout.filter(function(w){return w.date===date;});
+
   function calcVolRate(item){
-    var pv=0,av=0;
+    var pv=0;
     (item.sets||[]).forEach(function(s){
       if(item.part==='__super__'){
         pv+=(s.weight1||0)*(s.reps1||0)+(s.weight2||0)*(s.reps2||0);
-        if(s.done1) av+=(s.actual_weight1!=null?s.actual_weight1:s.weight1||0)*(s.actual_reps1!=null?s.actual_reps1:s.reps1||0);
-        if(s.done2) av+=(s.actual_weight2!=null?s.actual_weight2:s.weight2||0)*(s.actual_reps2!=null?s.actual_reps2:s.reps2||0);
       } else {
         pv+=(s.weight||0)*(s.reps||0);
-        if(s.done) av+=(s.actual_weight!=null?s.actual_weight:s.weight||0)*(s.actual_reps!=null?s.actual_reps:s.reps||0);
       }
     });
-    return pv>0?Math.round(av/pv*100):0;
+    if(pv===0) return 0;
+    // 해당 종목의 실제 운동 볼륨 (초과 세트 포함)
+    var names = item.part==='__super__'
+      ? [(item.sets[0]&&item.sets[0].name1)||'', (item.sets[0]&&item.sets[0].name2)||'']
+      : [item.name];
+    var av = 0;
+    dateWorkouts.forEach(function(w){
+      if(names.indexOf(w.name) !== -1) av += calculateSingleSetVolume(w);
+    });
+    return Math.round(av/pv*100);
   }
 
   var rows = items.map(function(item,idx){
@@ -3637,22 +3649,27 @@ function movePlanItem(planId,dir){
 function updatePlanExecRate(){
   var date=document.getElementById('planDate').value||getTodayStr();
   var items=db.plan.filter(function(p){return p.date===date;});
-  if(!items.length){document.getElementById('planExecRate').innerText='0';return;}
-  var totalPlanVol=0, totalActualVol=0;
+  var el=document.getElementById('planExecRate');
+  if(!items.length){el.innerText='0';return;}
+
+  // 계획 총 볼륨
+  var totalPlanVol=0;
   items.forEach(function(item){
     (item.sets||[]).forEach(function(s){
       if(item.part==='__super__'){
         totalPlanVol+=(s.weight1||0)*(s.reps1||0)+(s.weight2||0)*(s.reps2||0);
-        if(s.done1) totalActualVol+=(s.actual_weight1!=null?s.actual_weight1:(s.weight1||0))*(s.actual_reps1!=null?s.actual_reps1:(s.reps1||0));
-        if(s.done2) totalActualVol+=(s.actual_weight2!=null?s.actual_weight2:(s.weight2||0))*(s.actual_reps2!=null?s.actual_reps2:(s.reps2||0));
       } else {
         totalPlanVol+=(s.weight||0)*(s.reps||0);
-        if(s.done) totalActualVol+=(s.actual_weight!=null?s.actual_weight:(s.weight||0))*(s.actual_reps!=null?s.actual_reps:(s.reps||0));
       }
     });
   });
+
+  // 실제 총 볼륨 (해당 날짜 운동 기록 전체 - 초과세트, 추가종목 모두 포함)
+  var dateWorkouts=db.workout.filter(function(w){return w.date===date;});
+  var totalActualVol=calculateVolume(dateWorkouts);
+
   var rate=totalPlanVol>0?Math.round(totalActualVol/totalPlanVol*100):0;
-  document.getElementById('planExecRate').innerText=rate;
+  el.innerText=rate;
 }
 
 function openPlanEdit(planId){
