@@ -1178,8 +1178,7 @@ function initApp() {
   var savedWeeklyGoal = localStorage.getItem('weeklyWorkoutGoal');
   if(savedWeeklyGoal) document.getElementById('weeklyGoalInput').value = savedWeeklyGoal;
 
-  // Firestore에서 데이터 로딩
-  loadDataFromFirestore();
+  // 데이터 로딩은 initFirestore()의 signInAnonymously 완료 후 실행됨
 }
 
 function ensureIds(arr) {
