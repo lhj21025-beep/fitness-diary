@@ -354,13 +354,6 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     </div>
     <!-- 부상 경고 -->
     <div id="injuryWarning" class="hidden mb-3 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg text-xs text-orange-700 dark:text-orange-300"><i class="fa-solid fa-triangle-exclamation mr-1"></i><span id="injuryWarningText"></span></div>
-    <!-- 8. 종목별 최근 5회 기록 -->
-    <div id="woRecentRecords" class="hidden mb-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
-      <div class="flex items-center justify-between mb-1">
-        <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400"><i class="fa-solid fa-clock-rotate-left mr-1"></i>최근 5회 기록</span>
-      </div>
-      <div id="woRecentRecordsBody" class="space-y-0"></div>
-    </div>
     <!-- 유튜브 동작 영상 버튼 -->
     <div id="woYoutubeArea" class="hidden mb-3 flex gap-2 items-center">
       <a id="woYoutubeLink" href="#" target="_blank" class="flex-1 flex items-center justify-center gap-2 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 font-bold text-sm active:bg-red-100 transition-colors">
@@ -374,6 +367,13 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
       </button>
     </div>
     <button id="btnSaveWorkout" onclick="saveWorkout()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-md transition-colors active:bg-blue-700 mb-4 disabled:opacity-50">기록 저장</button>
+    <!-- 최근 5회 기록 (저장버튼 바로 아래) -->
+    <div id="woRecentRecords" class="hidden mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400"><i class="fa-solid fa-clock-rotate-left mr-1"></i>최근 5회 기록</span>
+      </div>
+      <div id="woRecentRecordsBody" class="space-y-0"></div>
+    </div>
     <!-- 상태 요약 -->
     <div class="bg-gray-100 dark:bg-gray-700 rounded p-3 mb-4 text-sm flex justify-between items-center">
       <div>
@@ -2961,7 +2961,69 @@ function saveWorkout(){
   showToast('저장 완료!',true);
   document.getElementById('woMemo').value='';
 
+  // 계획에 없던 종목이면 현재 운동 다음 순서로 계획 자동 추가
+  if(!editingId) {
+    autoAddToPlanIfNeeded(data);
+  }
+
   if(document.getElementById('autoTimerToggle').checked){ startTimer(lastSetTimer); window.scrollTo({top:0,behavior:'smooth'}); }
+}
+
+// 운동탭에서 저장 시 계획에 없던 종목이면 자동으로 계획에 추가
+function autoAddToPlanIfNeeded(workoutData) {
+  var date = workoutData.date;
+  var name = workoutData.name;
+  var part = workoutData.part;
+
+  // 이미 계획에 있는 종목인지 확인
+  var existingPlan = db.plan.find(function(p) {
+    return p.date === date && p.name === name && p.part !== '__super__';
+  });
+  if(existingPlan) return; // 이미 계획에 있으면 무시
+
+  // 현재 진행 중인 운동 찾기 (오늘 날짜 운동 기록 중 가장 최근 종목)
+  var todayWorkouts = db.workout.filter(function(w){ return w.date === date; });
+  var todayPlans = db.plan.filter(function(p){ return p.date === date; });
+
+  // 현재 진행 중인 계획 항목 찾기 (방금 저장한 운동과 같은 종목이 계획에 있으면 그 다음)
+  var currentPlanOrder = -1;
+  todayPlans.forEach(function(p) {
+    // 오늘 운동 기록에 있는 종목과 매칭되는 계획 중 가장 마지막 순서
+    var hasRecord = todayWorkouts.some(function(w){ return w.name === p.name && w.id !== workoutData.id; });
+    if(hasRecord && (p.order||0) > currentPlanOrder) {
+      currentPlanOrder = p.order||0;
+    }
+  });
+
+  // 삽입 위치: 현재 진행 중인 운동 다음 순서
+  var insertOrder = currentPlanOrder + 1;
+
+  // 기존 계획에서 insertOrder 이후 항목들 순서 밀기
+  var needShift = todayPlans.filter(function(p){ return (p.order||0) >= insertOrder; });
+  needShift.forEach(function(p) {
+    p.order = (p.order||0) + 1;
+    gasRun('updatePlanItem', p);
+    if(window.firestoreDb) window.firestoreDb.collection('plans').doc(p.id).update({order: p.order});
+  });
+
+  // 최근 기록에서 세트 정보 가져오기
+  var recentSets = getLastWorkoutForExercise(name);
+  var sets = recentSets && recentSets.length > 0
+    ? recentSets.map(function(s){ return {weight:s.weight, reps:s.reps, actual_weight:s.weight, actual_reps:s.reps, done:false}; })
+    : [{weight:parseFloat(workoutData.weight)||0, reps:parseInt(workoutData.reps)||0, actual_weight:parseFloat(workoutData.weight)||0, actual_reps:parseInt(workoutData.reps)||0, done:false}];
+
+  var newPlan = {
+    id: 'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),
+    date: date, part: part, name: name,
+    order: insertOrder, sets: sets, status: 'planned'
+  };
+
+  db.plan.push(newPlan);
+  gasRun('savePlanItem', newPlan);
+  if(window.firestoreDb) window.firestoreDb.collection('plans').doc(newPlan.id).set(newPlan);
+
+  showToast('['+name+'] 계획에 자동 추가됐습니다!', true);
+  renderPlanList(); updatePlanExecRate();
 }
 
 // ========== 영양제 추가/수정 ==========
@@ -3370,21 +3432,44 @@ function applyRepeatPlansToday(){
 function savePlanExercise(){
   var date=document.getElementById('planDate').value, part=document.getElementById('planPart').value;
   if(!date||!part){showToast('날짜와 부위를 선택해주세요.',false);return;}
-  var sameDay=db.plan.filter(p=>p.date===date);
-  var maxOrder=sameDay.length>0?Math.max(...sameDay.map(p=>p.order||0))+1:0;
+  var sameDay=db.plan.filter(function(p){return p.date===date;});
+
+  // 현재 진행 중인 운동 다음에 삽입 (오늘 날짜이고 이미 운동 기록이 있을 때)
+  var insertOrder = sameDay.length > 0 ? Math.max.apply(null, sameDay.map(function(p){return p.order||0;})) + 1 : 0;
+  if(date === getTodayStr() && sameDay.length > 0) {
+    var todayWorkouts = db.workout.filter(function(w){return w.date===date;});
+    if(todayWorkouts.length > 0) {
+      // 가장 최근에 운동한 종목과 매칭되는 계획의 order 찾기
+      var lastWorkoutName = todayWorkouts[todayWorkouts.length-1].name;
+      var currentPlan = sameDay.find(function(p){return p.name===lastWorkoutName;});
+      if(currentPlan) {
+        var currentOrder = currentPlan.order||0;
+        insertOrder = currentOrder + 1;
+        // insertOrder 이후 계획들 순서 밀기
+        sameDay.filter(function(p){return (p.order||0) >= insertOrder;}).forEach(function(p){
+          p.order = (p.order||0) + 1;
+          gasRun('updatePlanItem', p);
+          if(window.firestoreDb) window.firestoreDb.collection('plans').doc(p.id).update({order: p.order});
+        });
+      }
+    }
+  }
+
   if(part==='__super__'){
     var n1=document.getElementById('superName1').value, n2=document.getElementById('superName2').value;
     var p1=document.getElementById('superPart1').value, p2=document.getElementById('superPart2').value;
     if(!n1&&!n2){showToast('운동명을 선택해주세요.',false);return;}
-    var sets=planSets.map(s=>({weight1:s.weight1||0,reps1:s.reps1||15,weight2:s.weight2||0,reps2:s.reps2||15,part1:p1,name1:n1,part2:p2,name2:n2,done1:false,done2:false}));
-    var item={id:'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date,part:'__super__',name:`[슈퍼세트] ${n1||''}+${n2||''}`,order:maxOrder,sets,status:'planned'};
+    var sets=planSets.map(function(s){return {weight1:s.weight1||0,reps1:s.reps1||15,weight2:s.weight2||0,reps2:s.reps2||15,part1:p1,name1:n1,part2:p2,name2:n2,done1:false,done2:false};});
+    var item={id:'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:date,part:'__super__',name:'[슈퍼세트] '+(n1||'')+'+'+(n2||''),order:insertOrder,sets:sets,status:'planned'};
     db.plan.push(item); gasRun('savePlanItem',item);
+    if(window.firestoreDb) window.firestoreDb.collection('plans').doc(item.id).set(item);
   } else {
     var name=document.getElementById('planName').value;
     if(!name){showToast('운동명을 선택해주세요.',false);return;}
-    var sets=planSets.map(s=>({weight:s.weight||0,reps:s.reps||15,done:false}));
-    var item={id:'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date,part,name,order:maxOrder,sets,status:'planned'};
+    var sets=planSets.map(function(s){return {weight:s.weight||0,reps:s.reps||15,actual_weight:s.weight||0,actual_reps:s.reps||15,done:false};});
+    var item={id:'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:date,part:part,name:name,order:insertOrder,sets:sets,status:'planned'};
     db.plan.push(item); gasRun('savePlanItem',item);
+    if(window.firestoreDb) window.firestoreDb.collection('plans').doc(item.id).set(item);
   }
   // 저장 후: 부위는 유지, 운동명만 초기화 (같은 날 연속 입력 편의)
   document.getElementById('planName').value = '';
