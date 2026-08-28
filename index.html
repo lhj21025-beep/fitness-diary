@@ -2976,17 +2976,18 @@ function saveWorkout(){
   if(document.getElementById('autoTimerToggle').checked){ startTimer(lastSetTimer); window.scrollTo({top:0,behavior:'smooth'}); }
 }
 
-// 운동탭에서 저장 시 계획에 없던 종목이면 자동으로 계획에 추가
+// 운동탭에서 저장 시 계획에 없던 종목이면 자동으로 계획에 추가하고,
+// 이미 계획에 있는 종목이면 방금 저장한 세트를 계획의 실적으로 연결(완료 처리)한다.
 function autoAddToPlanIfNeeded(workoutData) {
   var date = workoutData.date;
   var name = workoutData.name;
   var part = workoutData.part;
 
-  // 이미 계획에 있는 종목인지 확인
+  // 이미 계획에 있는 종목인지 확인 (슈퍼셋 항목은 이름 매칭 방식이 달라 제외)
   var existingPlan = db.plan.find(function(p) {
     return p.date === date && p.name === name && p.part !== '__super__';
   });
-  if(existingPlan) return; // 이미 계획에 있으면 무시
+  if(existingPlan) { linkWorkoutToPlanItem(existingPlan, workoutData); return; }
 
   // 현재 진행 중인 운동 찾기 (오늘 날짜 운동 기록 중 가장 최근 종목)
   var todayWorkouts = db.workout.filter(function(w){ return w.date === date; });
@@ -3013,24 +3014,53 @@ function autoAddToPlanIfNeeded(workoutData) {
     if(window.firestoreDb) window.firestoreDb.collection('plans').doc(p.id).update({order: p.order});
   });
 
-  // 최근 기록에서 세트 정보 가져오기
-  var recentSets = getLastWorkoutForExercise(name);
-  var sets = recentSets && recentSets.length > 0
-    ? recentSets.map(function(s){ return {weight:s.weight, reps:s.reps, actual_weight:s.weight, actual_reps:s.reps, done:false}; })
-    : [{weight:parseFloat(workoutData.weight)||0, reps:parseInt(workoutData.reps)||0, actual_weight:parseFloat(workoutData.weight)||0, actual_reps:parseInt(workoutData.reps)||0, done:false}];
+  // 계획에 전혀 없던 종목이므로 목표 중량/횟수는 0(계획 없음)으로 두고,
+  // 방금 저장한 세트만 실적(actual)을 채워 완료 처리 + '추가된 세트'로 표시한다.
+  var newSet = {
+    weight: 0, reps: 0,
+    actual_weight: parseFloat(workoutData.weight)||0, actual_reps: parseInt(workoutData.reps)||0,
+    done: true, workoutId: workoutData.id, extra: true
+  };
 
   var newPlan = {
     id: 'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),
     date: date, part: part, name: name,
-    order: insertOrder, sets: sets, status: 'planned'
+    order: insertOrder, sets: [newSet], status: 'done', autoAdded: true
   };
 
   db.plan.push(newPlan);
   gasRun('savePlanItem', newPlan);
   if(window.firestoreDb) window.firestoreDb.collection('plans').doc(newPlan.id).set(newPlan);
 
-  showToast('['+name+'] 계획에 자동 추가됐습니다!', true);
+  showToast('['+name+'] 계획에 없던 종목이 자동 기록됐습니다!', true);
   renderPlanList(); updatePlanExecRate();
+}
+
+// 이미 계획에 있는 종목에 운동탭에서 저장한 세트를 실적으로 연결한다.
+// 미완료 계획 세트가 남아있으면 그 세트를 채우고, 계획된 세트를 모두 초과했다면
+// 목표 0의 '추가 세트'를 새로 만들어 완료 처리한다. (슈퍼셋 항목은 대상에서 제외됨)
+function linkWorkoutToPlanItem(item, workoutData) {
+  item.sets = item.sets || [];
+  var target = null;
+  for (var i=0; i<item.sets.length; i++) {
+    if (!item.sets[i].done) { target = item.sets[i]; break; }
+  }
+  if (target) {
+    target.done = true;
+    target.workoutId = workoutData.id;
+    target.actual_weight = parseFloat(workoutData.weight)||0;
+    target.actual_reps = parseInt(workoutData.reps)||0;
+  } else {
+    item.sets.push({
+      weight: 0, reps: 0,
+      actual_weight: parseFloat(workoutData.weight)||0, actual_reps: parseInt(workoutData.reps)||0,
+      done: true, workoutId: workoutData.id, extra: true
+    });
+  }
+  item.status = item.sets.every(function(s){ return item.part==='__super__' ? (s.done1&&s.done2) : s.done; }) ? 'done' : 'planned';
+  gasRun('updatePlanItem', item);
+  if(window.firestoreDb) window.firestoreDb.collection('plans').doc(item.id).update({sets:item.sets, status:item.status});
+  renderPlanList(); updatePlanExecRate(); updateAttendance();
 }
 
 // ========== 영양제 추가/수정 ==========
@@ -3534,6 +3564,11 @@ function renderPlanList(){
     var border=isDone?'border-blue-300 dark:border-blue-700':'border-gray-200 dark:border-gray-700';
     var upDis=idx===0?'opacity-30':'', dnDis=idx===items.length-1?'opacity-30':'';
     var superIcon=isSuper?'<i class="fa-solid fa-link text-purple-500 mr-1"></i>':'';
+    // 계획에 없다가 운동탭에서 자동으로 추가된 종목 표시
+    var addedItemBadge=item.autoAdded?'<span class="ml-1 text-[10px] font-bold text-orange-500 bg-orange-100 dark:bg-orange-900/30 px-1.5 py-0.5 rounded align-middle">계획외 추가</span>':'';
+    var rateBadgeHtml=item.autoAdded
+      ? '<span class="execution-rate-badge bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">추가</span>'
+      : '<span class="execution-rate-badge '+rc+'">'+volRate+'%</span>';
 
     var headerDiv = '<div class="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50">'
       + '<div class="flex items-center gap-2">'
@@ -3541,10 +3576,10 @@ function renderPlanList(){
       + '<button data-id="'+item.id+'" data-dir="-1" onclick="movePlanItem(this.dataset.id,parseInt(this.dataset.dir))" class="w-5 h-5 flex items-center justify-center text-gray-400 '+upDis+'"><i class="fa-solid fa-chevron-up text-[10px]"></i></button>'
       + '<button data-id="'+item.id+'" data-dir="1" onclick="movePlanItem(this.dataset.id,parseInt(this.dataset.dir))" class="w-5 h-5 flex items-center justify-center text-gray-400 '+dnDis+'"><i class="fa-solid fa-chevron-down text-[10px]"></i></button>'
       + '</div>'
-      + '<div><span class="font-bold text-sm text-gray-800 dark:text-gray-200">'+superIcon+item.name+'</span><span class="ml-1 text-xs text-gray-400">'+total+'세트</span></div>'
+      + '<div><span class="font-bold text-sm text-gray-800 dark:text-gray-200">'+superIcon+item.name+'</span><span class="ml-1 text-xs text-gray-400">'+total+'세트</span>'+addedItemBadge+'</div>'
       + '</div>'
       + '<div class="flex items-center gap-2">'
-      + '<span class="execution-rate-badge '+rc+'">'+volRate+'%</span>'
+      + rateBadgeHtml
       + '<button data-id="'+item.id+'" onclick="openPlanEdit(this.dataset.id)" class="text-gray-400 p-1"><i class="fa-solid fa-pen-to-square text-xs"></i></button>'
       + '</div></div>';
 
@@ -3595,11 +3630,13 @@ function renderPlanList(){
         setsHtml+='</div>';
       } else {
         var aw=set.actual_weight!=null?set.actual_weight:(set.weight||0);
-        var ar=set.actual_reps!=null?set.actual_reps:(set.reps||15);
+        var ar=set.actual_reps!=null?set.actual_reps:(set.extra?(set.actual_reps||0):(set.reps||15));
         var done=set.done;
+        var extraSetBadge=set.extra?'<span class="text-[9px] font-bold text-orange-500 bg-orange-100 dark:bg-orange-900/30 px-1 rounded ml-0.5">추가</span>':'';
+        var planTargetText=set.extra?'계획없음':((set.weight||0)+'kg×'+(set.reps||15)+'회');
         setsHtml+='<div class="plan-set-item flex items-center gap-1 py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-0 rounded -mx-1 px-1" data-plan-id="'+item.id+'" data-set-idx="'+si+'" data-mode="normal">';
-        setsHtml+='<span class="text-xs font-bold text-gray-400 w-8">'+(si+1)+'세트</span>';
-        setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+(set.weight||0)+'kg×'+(set.reps||15)+'회</span>';
+        setsHtml+='<span class="text-xs font-bold text-gray-400 w-8 flex items-center">'+(si+1)+'세트'+extraSetBadge+'</span>';
+        setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+planTargetText+'</span>';
         setsHtml+='<div class="flex-1 flex items-center gap-0.5 justify-center">';
         setsHtml+='<input type="number" '+inpW+' value="'+aw+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='<span class="text-[10px] text-gray-400">×</span>';
@@ -4295,14 +4332,32 @@ function executeDeleteRecord(){
 
 function unlinkPlanByWorkoutId(workoutId){
   var changed=false;
+  var toRemove=[];
   db.plan.forEach(item=>{
-    (item.sets||[]).forEach(set=>{
-      if(set.workoutId===workoutId){set.done=false;set.workoutId=null;changed=true;}
-      if(set.workoutId1===workoutId){set.done1=false;set.workoutId1=null;changed=true;}
-      if(set.workoutId2===workoutId){set.done2=false;set.workoutId2=null;changed=true;}
+    var itemChanged=false;
+    item.sets=(item.sets||[]).filter(set=>{
+      if(set.workoutId===workoutId){
+        if(set.extra){ itemChanged=true; return false; } // 초과로 추가된 세트는 원래 계획에 없던 것이므로 삭제
+        set.done=false; set.workoutId=null; set.actual_weight=null; set.actual_reps=null; itemChanged=true;
+      }
+      if(set.workoutId1===workoutId){set.done1=false;set.workoutId1=null;itemChanged=true;}
+      if(set.workoutId2===workoutId){set.done2=false;set.workoutId2=null;itemChanged=true;}
+      return true;
     });
-    if(changed){ item.status=item.sets.every(s=>item.part==='__super__'?(s.done1&&s.done2):s.done)?'done':'planned'; clearTimeout(item._saveTimer); item._saveTimer=setTimeout(()=>gasRun('updatePlanItem',item),300); }
+    if(itemChanged){
+      changed=true;
+      if(item.autoAdded && !item.sets.length){
+        toRemove.push(item.id);
+      } else {
+        item.status=item.sets.length && item.sets.every(s=>item.part==='__super__'?(s.done1&&s.done2):s.done)?'done':'planned';
+        clearTimeout(item._saveTimer); item._saveTimer=setTimeout(()=>gasRun('updatePlanItem',item),300);
+      }
+    }
   });
+  if(toRemove.length){
+    db.plan=db.plan.filter(p=>toRemove.indexOf(p.id)===-1);
+    toRemove.forEach(id=>gasRun('deletePlanItem',id));
+  }
   if(changed){ renderPlanList(); updatePlanExecRate(); }
 }
 
