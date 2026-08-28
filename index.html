@@ -4382,20 +4382,17 @@ function unlinkPlanByWorkoutId(workoutId){
   db.plan.forEach(item=>{
     var itemChanged=false;
     item.sets=(item.sets||[]).filter(set=>{
-      if(set.workoutId===workoutId){
-        if(set.extra){ itemChanged=true; return false; } // 초과로 추가된 세트는 원래 계획에 없던 것이므로 삭제
-        set.done=false; set.workoutId=null; set.actual_weight=null; set.actual_reps=null; itemChanged=true;
-      }
+      if(set.workoutId===workoutId){ itemChanged=true; return false; } // 기록이 삭제되면 계획의 해당 세트도 함께 삭제
       if(set.workoutId1===workoutId){set.done1=false;set.workoutId1=null;itemChanged=true;}
       if(set.workoutId2===workoutId){set.done2=false;set.workoutId2=null;itemChanged=true;}
       return true;
     });
     if(itemChanged){
       changed=true;
-      if(item.autoAdded && !item.sets.length){
-        toRemove.push(item.id);
+      if(!item.sets.length){
+        toRemove.push(item.id); // 세트가 하나도 안 남으면 계획 항목 자체도 삭제
       } else {
-        item.status=item.sets.length && item.sets.every(s=>item.part==='__super__'?(s.done1&&s.done2):s.done)?'done':'planned';
+        item.status=item.sets.every(s=>item.part==='__super__'?(s.done1&&s.done2):s.done)?'done':'planned';
         clearTimeout(item._saveTimer); item._saveTimer=setTimeout(()=>gasRun('updatePlanItem',item),300);
       }
     }
