@@ -1289,12 +1289,11 @@ function loadDataFromFirestore() {
   showToast('데이터 로딩 중...', true);
 
   // 초기 전체 데이터 로딩
-  // workouts/nutrition은 더 이상 별도 컬렉션이 아니라 days 컬렉션의 일자별 문서 안에
-  // 맵(workouts:{id:{...}}, nutrition:{id:{...}})으로 들어있음 → 문서 수 = 날짜 수
+  // workouts/nutrition/plans는 더 이상 별도 컬렉션이 아니라 days 컬렉션의 일자별 문서 안에
+  // 맵(workouts:{id:{...}}, nutrition:{id:{...}}, plans:{id:{...}})으로 들어있음 → 문서 수 = 날짜 수
   var promises = [
     db.collection('days').get(),
     db.collection('measurements').get(),
-    db.collection('plans').get(),
     db.collection('diary').get(),
     db.collection('exercises').get(),
     db.collection('templates').get(),
@@ -1306,18 +1305,17 @@ function loadDataFromFirestore() {
   Promise.all(promises).then(function(results) {
     var dayDocs     = results[0].docs.map(function(d){ var o=d.data()||{}; if(!o.date) o.date=d.id; return o; });
     var measure     = results[1].docs.map(function(d){return sanitizeRecord(d.data());});
-    var plans       = results[2].docs.map(function(d){return sanitizeRecord(d.data());});
-    var diary       = results[3].docs.map(function(d){return sanitizeRecord(d.data());});
-    var exercises   = results[4].docs.map(function(d){return d.data();});
-    var templates   = results[5].docs.map(function(d){return d.data();});
-    var repeatPlans = results[6].docs.map(function(d){return d.data();});
-    var goals       = results[7].docs.map(function(d){return sanitizeRecord(d.data());});
-    var nutritionRef= results[8].docs.map(function(d){return d.data();});
+    var diary       = results[2].docs.map(function(d){return sanitizeRecord(d.data());});
+    var exercises   = results[3].docs.map(function(d){return d.data();});
+    var templates   = results[4].docs.map(function(d){return d.data();});
+    var repeatPlans = results[5].docs.map(function(d){return d.data();});
+    var goals       = results[6].docs.map(function(d){return sanitizeRecord(d.data());});
+    var nutritionRef= results[7].docs.map(function(d){return d.data();});
 
-    // days 문서를 기존 로직이 기대하는 flat 배열(workouts/nutrition)로 펼침
-    var workouts=[], nutrition=[];
+    // days 문서를 기존 로직이 기대하는 flat 배열(workouts/nutrition/plans)로 펼침
+    var workouts=[], nutrition=[], plans=[];
     dayDocs.forEach(function(day){
-      var wMap=day.workouts||{}, nMap=day.nutrition||{};
+      var wMap=day.workouts||{}, nMap=day.nutrition||{}, pMap=day.plans||{};
       Object.keys(wMap).forEach(function(id){
         var rec=wMap[id]||{}; rec.id=id; if(!rec.date) rec.date=day.date;
         workouts.push(sanitizeRecord(rec));
@@ -1326,9 +1324,13 @@ function loadDataFromFirestore() {
         var rec=nMap[id]||{}; rec.id=id; if(!rec.date) rec.date=day.date;
         nutrition.push(sanitizeRecord(rec));
       });
+      Object.keys(pMap).forEach(function(id){
+        var rec=pMap[id]||{}; rec.id=id; if(!rec.date) rec.date=day.date;
+        plans.push(sanitizeRecord(rec));
+      });
     });
 
-    console.log('로딩 - 운동:'+workouts.length+'건, 영양:'+nutrition.length+'건');
+    console.log('로딩 - 운동:'+workouts.length+'건, 영양:'+nutrition.length+'건, 계획:'+plans.length+'건');
 
     var dataRef = exercises.map(function(e){
       return {type:'ex', part:e.part, name:e.name, unit:e.unit||'KG', typeFlag:e.typeFlag||'', youtube:e.youtube||''};
@@ -1520,26 +1522,29 @@ function handleFirestoreOp(fnName, args) {
   } else if(fnName === 'savePlanItem' || fnName === 'savePlanSetToWorkout') {
     var data = a[0];
     if(fnName === 'savePlanItem') {
-      db.collection('plans').doc(data.id).set(data);
+      saveRecordToDayDoc('plans', data);
     } else {
       saveRecordToDayDoc('workouts', data);
     }
 
   } else if(fnName === 'updatePlanItem') {
     var item = a[0];
-    db.collection('plans').doc(item.id).set(item);
+    saveRecordToDayDoc('plans', item);
 
   } else if(fnName === 'deletePlanItem') {
     var id = a[0];
-    db.collection('plans').doc(id).delete();
+    var date = a[1]; // 어느 날짜 문서의 plans 맵에서 지울지 알아야 함
+    deleteRecordFromDayDoc('plans', date, id);
 
   } else if(fnName === 'updatePlanOrders') {
-    var orders = a[0];
-    var batch = db.batch();
-    orders.forEach(function(o) {
-      batch.update(db.collection('plans').doc(o.id), {order: o.order});
+    var orders = a[0]; // [{id, order, date}, ...] - 보통 같은 날짜지만 안전하게 날짜별로 묶어서 처리
+    var byDate = {};
+    orders.forEach(function(o){ (byDate[o.date] = byDate[o.date]||[]).push(o); });
+    Object.keys(byDate).forEach(function(date){
+      var upd = {};
+      byDate[date].forEach(function(o){ upd['plans.'+o.id+'.order'] = o.order; });
+      dayDocRef(date).update(upd);
     });
-    batch.commit();
 
   } else if(fnName === 'saveDiary') {
     var data = a[0];
@@ -3053,7 +3058,6 @@ function autoAddToPlanIfNeeded(workoutData) {
   needShift.forEach(function(p) {
     p.order = (p.order||0) + 1;
     gasRun('updatePlanItem', p);
-    if(window.firestoreDb) window.firestoreDb.collection('plans').doc(p.id).update({order: p.order});
   });
 
   // 계획에 전혀 없던 종목이므로 목표 중량/횟수는 0(계획 없음)으로 두고,
@@ -3072,7 +3076,6 @@ function autoAddToPlanIfNeeded(workoutData) {
 
   db.plan.push(newPlan);
   gasRun('savePlanItem', newPlan);
-  if(window.firestoreDb) window.firestoreDb.collection('plans').doc(newPlan.id).set(newPlan);
 
   showToast('['+name+'] 계획에 없던 종목이 자동 기록됐습니다!', true);
   renderPlanList(); updatePlanExecRate();
@@ -3101,7 +3104,6 @@ function linkWorkoutToPlanItem(item, workoutData) {
   }
   item.status = item.sets.every(function(s){ return item.part==='__super__' ? (s.done1&&s.done2) : s.done; }) ? 'done' : 'planned';
   gasRun('updatePlanItem', item);
-  if(window.firestoreDb) window.firestoreDb.collection('plans').doc(item.id).update({sets:item.sets, status:item.status});
   renderPlanList(); updatePlanExecRate(); updateAttendance();
 }
 
@@ -3254,7 +3256,7 @@ function deleteAllPlanForDate() {
   document.getElementById('confirmBtn').onclick = function() {
     items.forEach(function(item) {
       db.plan = db.plan.filter(function(p){ return p.id !== item.id; });
-      gasRun('deletePlanItem', item.id);
+      gasRun('deletePlanItem', item.id, item.date);
     });
     document.getElementById('confirmModal').classList.remove('active');
     renderPlanList(); updatePlanExecRate(); updateAttendance();
@@ -3528,7 +3530,6 @@ function savePlanExercise(){
         sameDay.filter(function(p){return (p.order||0) >= insertOrder;}).forEach(function(p){
           p.order = (p.order||0) + 1;
           gasRun('updatePlanItem', p);
-          if(window.firestoreDb) window.firestoreDb.collection('plans').doc(p.id).update({order: p.order});
         });
       }
     }
@@ -3541,14 +3542,12 @@ function savePlanExercise(){
     var sets=planSets.map(function(s){return {weight1:s.weight1||0,reps1:s.reps1||15,weight2:s.weight2||0,reps2:s.reps2||15,part1:p1,name1:n1,part2:p2,name2:n2,done1:false,done2:false};});
     var item={id:'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:date,part:'__super__',name:'[슈퍼세트] '+(n1||'')+'+'+(n2||''),order:insertOrder,sets:sets,status:'planned'};
     db.plan.push(item); gasRun('savePlanItem',item);
-    if(window.firestoreDb) window.firestoreDb.collection('plans').doc(item.id).set(item);
   } else {
     var name=document.getElementById('planName').value;
     if(!name){showToast('운동명을 선택해주세요.',false);return;}
     var sets=planSets.map(function(s){return {weight:s.weight||0,reps:s.reps||15,actual_weight:s.weight||0,actual_reps:s.reps||15,done:false};});
     var item={id:'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:date,part:part,name:name,order:insertOrder,sets:sets,status:'planned'};
     db.plan.push(item); gasRun('savePlanItem',item);
-    if(window.firestoreDb) window.firestoreDb.collection('plans').doc(item.id).set(item);
   }
   // 저장 후: 부위는 유지, 운동명만 초기화 (같은 날 연속 입력 편의)
   document.getElementById('planName').value = '';
@@ -3828,7 +3827,7 @@ function movePlanItem(planId,dir){
   var tmp=items[idx].order; items[idx].order=items[ti].order; items[ti].order=tmp;
   if(items[idx].order===items[ti].order){items[idx].order=idx;items[ti].order=ti;}
   items.forEach(item=>{ var di=db.plan.find(p=>p.id===item.id); if(di) di.order=item.order; });
-  gasRun('updatePlanOrders',items.map(p=>({id:p.id,order:p.order})));
+  gasRun('updatePlanOrders',items.map(p=>({id:p.id,order:p.order,date:p.date})));
   renderPlanList();
 }
 
@@ -3921,7 +3920,7 @@ function deletePlanItemUI(){
   document.getElementById('confirmText').innerText=`"${item.name}" 계획을 삭제하시겠습니까?`;
   document.getElementById('confirmBtn').onclick=()=>{
     db.plan=db.plan.filter(p=>p.id!==editingPlanId);
-    gasRun('deletePlanItem',editingPlanId);
+    gasRun('deletePlanItem',editingPlanId,item.date);
     document.getElementById('confirmModal').classList.remove('active');
     document.getElementById('planEditModal').classList.remove('active');
     renderPlanList(); updatePlanExecRate(); showToast('계획이 삭제되었습니다.',true);
@@ -3969,7 +3968,7 @@ function deletePlanSetUI(){
     if(item.part==='__super__'){if(set.workoutId1){db.workout=db.workout.filter(w=>w.id!==set.workoutId1);gasRun('deleteRow','운동',set.workoutId1,item.date);}if(set.workoutId2){db.workout=db.workout.filter(w=>w.id!==set.workoutId2);gasRun('deleteRow','운동',set.workoutId2,item.date);}}
     else{if(set.workoutId){db.workout=db.workout.filter(w=>w.id!==set.workoutId);gasRun('deleteRow','운동',set.workoutId,item.date);}}
     item.sets.splice(setIdx,1);
-    if(!item.sets.length){db.plan=db.plan.filter(p=>p.id!==planId);gasRun('deletePlanItem',planId);}
+    if(!item.sets.length){db.plan=db.plan.filter(p=>p.id!==planId);gasRun('deletePlanItem',planId,item.date);}
     else{item.status=item.sets.every(s=>item.part==='__super__'?(s.done1&&s.done2):s.done)?'done':'planned';gasRun('updatePlanItem',item);}
     document.getElementById('confirmModal').classList.remove('active');
     document.getElementById('planSetActionModal').classList.remove('active');
@@ -4390,7 +4389,7 @@ function unlinkPlanByWorkoutId(workoutId){
     if(itemChanged){
       changed=true;
       if(!item.sets.length){
-        toRemove.push(item.id); // 세트가 하나도 안 남으면 계획 항목 자체도 삭제
+        toRemove.push({id:item.id, date:item.date}); // 세트가 하나도 안 남으면 계획 항목 자체도 삭제
       } else {
         item.status=item.sets.every(s=>item.part==='__super__'?(s.done1&&s.done2):s.done)?'done':'planned';
         clearTimeout(item._saveTimer); item._saveTimer=setTimeout(()=>gasRun('updatePlanItem',item),300);
@@ -4398,8 +4397,9 @@ function unlinkPlanByWorkoutId(workoutId){
     }
   });
   if(toRemove.length){
-    db.plan=db.plan.filter(p=>toRemove.indexOf(p.id)===-1);
-    toRemove.forEach(id=>gasRun('deletePlanItem',id));
+    var removeIds=toRemove.map(t=>t.id);
+    db.plan=db.plan.filter(p=>removeIds.indexOf(p.id)===-1);
+    toRemove.forEach(t=>gasRun('deletePlanItem',t.id,t.date));
   }
   if(changed){ renderPlanList(); updatePlanExecRate(); }
 }
