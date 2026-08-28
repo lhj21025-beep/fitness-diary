@@ -1289,9 +1289,10 @@ function loadDataFromFirestore() {
   showToast('데이터 로딩 중...', true);
 
   // 초기 전체 데이터 로딩
+  // workouts/nutrition은 더 이상 별도 컬렉션이 아니라 days 컬렉션의 일자별 문서 안에
+  // 맵(workouts:{id:{...}}, nutrition:{id:{...}})으로 들어있음 → 문서 수 = 날짜 수
   var promises = [
-    db.collection('workouts').get(),
-    db.collection('nutrition').get(),
+    db.collection('days').get(),
     db.collection('measurements').get(),
     db.collection('plans').get(),
     db.collection('diary').get(),
@@ -1303,16 +1304,29 @@ function loadDataFromFirestore() {
   ];
 
   Promise.all(promises).then(function(results) {
-    var workouts    = results[0].docs.map(function(d){return sanitizeRecord(d.data());});
-    var nutrition   = results[1].docs.map(function(d){return sanitizeRecord(d.data());});
-    var measure     = results[2].docs.map(function(d){return sanitizeRecord(d.data());});
-    var plans       = results[3].docs.map(function(d){return sanitizeRecord(d.data());});
-    var diary       = results[4].docs.map(function(d){return sanitizeRecord(d.data());});
-    var exercises   = results[5].docs.map(function(d){return d.data();});
-    var templates   = results[6].docs.map(function(d){return d.data();});
-    var repeatPlans = results[7].docs.map(function(d){return d.data();});
-    var goals       = results[8].docs.map(function(d){return sanitizeRecord(d.data());});
-    var nutritionRef= results[9].docs.map(function(d){return d.data();});
+    var dayDocs     = results[0].docs.map(function(d){ var o=d.data()||{}; if(!o.date) o.date=d.id; return o; });
+    var measure     = results[1].docs.map(function(d){return sanitizeRecord(d.data());});
+    var plans       = results[2].docs.map(function(d){return sanitizeRecord(d.data());});
+    var diary       = results[3].docs.map(function(d){return sanitizeRecord(d.data());});
+    var exercises   = results[4].docs.map(function(d){return d.data();});
+    var templates   = results[5].docs.map(function(d){return d.data();});
+    var repeatPlans = results[6].docs.map(function(d){return d.data();});
+    var goals       = results[7].docs.map(function(d){return sanitizeRecord(d.data());});
+    var nutritionRef= results[8].docs.map(function(d){return d.data();});
+
+    // days 문서를 기존 로직이 기대하는 flat 배열(workouts/nutrition)로 펼침
+    var workouts=[], nutrition=[];
+    dayDocs.forEach(function(day){
+      var wMap=day.workouts||{}, nMap=day.nutrition||{};
+      Object.keys(wMap).forEach(function(id){
+        var rec=wMap[id]||{}; rec.id=id; if(!rec.date) rec.date=day.date;
+        workouts.push(sanitizeRecord(rec));
+      });
+      Object.keys(nMap).forEach(function(id){
+        var rec=nMap[id]||{}; rec.id=id; if(!rec.date) rec.date=day.date;
+        nutrition.push(sanitizeRecord(rec));
+      });
+    });
 
     console.log('로딩 - 운동:'+workouts.length+'건, 영양:'+nutrition.length+'건');
 
@@ -1411,6 +1425,23 @@ function addToOfflineQueue(fn, args) {
   localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
 }
 
+// ===== days 컬렉션 (일자별 통합 문서) 저장/삭제 헬퍼 =====
+// 운동 세트/영양 기록을 날짜별 문서 하나에 맵(id를 key로)으로 저장해 읽기 비용을 줄인다.
+function dayDocRef(date) {
+  return window.firestoreDb.collection('days').doc(date);
+}
+function saveRecordToDayDoc(field, data) {
+  var payload = { date: data.date };
+  payload[field] = {};
+  payload[field][data.id] = data;
+  dayDocRef(data.date).set(payload, { merge: true });
+}
+function deleteRecordFromDayDoc(field, date, id) {
+  var upd = {};
+  upd[field + '.' + id] = firebase.firestore.FieldValue.delete();
+  dayDocRef(date).update(upd);
+}
+
 function applyOfflineQueue() {
   if(!IS_GAS || !navigator.onLine || offlineQueue.length===0) return;
   var queue = [...offlineQueue];
@@ -1457,30 +1488,41 @@ function handleFirestoreOp(fnName, args) {
   };
 
   if(fnName === 'saveRow') {
-    var col = colMap[a[0]] || a[0];
+    var kind = a[0];
     var data = a[1];
-    db.collection(col).doc(data.id).set(data);
+    if(kind==='workout') { saveRecordToDayDoc('workouts', data); }
+    else if(kind==='nutrition') { saveRecordToDayDoc('nutrition', data); }
+    else { var col = colMap[kind] || kind; db.collection(col).doc(data.id).set(data); }
 
   } else if(fnName === 'updateRow') {
     var sheetName = a[0]; // '운동','영양','치수','일기'
-    var sheetToCol = {'운동':'workouts','영양':'nutrition','치수':'measurements','일기':'diary','목표':'goals'};
-    var col = sheetToCol[sheetName] || sheetName;
     var data = a[1];
-    db.collection(col).doc(data.id).set(data);
+    if(sheetName==='운동') { saveRecordToDayDoc('workouts', data); }
+    else if(sheetName==='영양') { saveRecordToDayDoc('nutrition', data); }
+    else {
+      var sheetToCol = {'치수':'measurements','일기':'diary','목표':'goals'};
+      var col = sheetToCol[sheetName] || sheetName;
+      db.collection(col).doc(data.id).set(data);
+    }
 
   } else if(fnName === 'deleteRow') {
     var sheetName = a[0];
     var id = a[1];
-    var sheetToCol = {'운동':'workouts','영양':'nutrition','치수':'measurements','일기':'diary'};
-    var col = sheetToCol[sheetName] || sheetName;
-    db.collection(col).doc(id).delete();
+    var date = a[2]; // 운동/영양 삭제 시 어느 날짜 문서인지 알아야 함
+    if(sheetName==='운동') { deleteRecordFromDayDoc('workouts', date, id); }
+    else if(sheetName==='영양') { deleteRecordFromDayDoc('nutrition', date, id); }
+    else {
+      var sheetToCol = {'치수':'measurements','일기':'diary'};
+      var col = sheetToCol[sheetName] || sheetName;
+      db.collection(col).doc(id).delete();
+    }
 
   } else if(fnName === 'savePlanItem' || fnName === 'savePlanSetToWorkout') {
     var data = a[0];
     if(fnName === 'savePlanItem') {
       db.collection('plans').doc(data.id).set(data);
     } else {
-      db.collection('workouts').doc(data.id).set(data);
+      saveRecordToDayDoc('workouts', data);
     }
 
   } else if(fnName === 'updatePlanItem') {
@@ -3908,7 +3950,7 @@ function undoPlanSetDone(){
   var wIdKey=mode==='super1'?'workoutId1':mode==='super2'?'workoutId2':'workoutId';
   var doneKey=mode==='super1'?'done1':mode==='super2'?'done2':'done';
   var wid=set[wIdKey];
-  if(wid){db.workout=db.workout.filter(w=>w.id!==wid);gasRun('deleteRow','운동',wid);}
+  if(wid){db.workout=db.workout.filter(w=>w.id!==wid);gasRun('deleteRow','운동',wid,item.date);}
   set[doneKey]=false; set[wIdKey]=null;
   item.status=item.sets.every(s=>item.part==='__super__'?(s.done1&&s.done2):s.done)?'done':'planned';
   gasRun('updatePlanItem',item);
@@ -3924,8 +3966,8 @@ function deletePlanSetUI(){
     var {planId,setIdx,mode}=selectedPlanSetInfo;
     var item=db.plan.find(p=>p.id===planId); if(!item){document.getElementById('confirmModal').classList.remove('active');return;}
     var set=item.sets[setIdx];
-    if(item.part==='__super__'){if(set.workoutId1){db.workout=db.workout.filter(w=>w.id!==set.workoutId1);gasRun('deleteRow','운동',set.workoutId1);}if(set.workoutId2){db.workout=db.workout.filter(w=>w.id!==set.workoutId2);gasRun('deleteRow','운동',set.workoutId2);}}
-    else{if(set.workoutId){db.workout=db.workout.filter(w=>w.id!==set.workoutId);gasRun('deleteRow','운동',set.workoutId);}}
+    if(item.part==='__super__'){if(set.workoutId1){db.workout=db.workout.filter(w=>w.id!==set.workoutId1);gasRun('deleteRow','운동',set.workoutId1,item.date);}if(set.workoutId2){db.workout=db.workout.filter(w=>w.id!==set.workoutId2);gasRun('deleteRow','운동',set.workoutId2,item.date);}}
+    else{if(set.workoutId){db.workout=db.workout.filter(w=>w.id!==set.workoutId);gasRun('deleteRow','운동',set.workoutId,item.date);}}
     item.sets.splice(setIdx,1);
     if(!item.sets.length){db.plan=db.plan.filter(p=>p.id!==planId);gasRun('deletePlanItem',planId);}
     else{item.status=item.sets.every(s=>item.part==='__super__'?(s.done1&&s.done2):s.done)?'done':'planned';gasRun('updatePlanItem',item);}
@@ -4318,7 +4360,11 @@ function confirmDeleteSelectedRecord(){
 function executeDeleteRecord(){
   var type=selectedRecordType, id=selectedRecordId;
   if(type==='diary'){ db.diary=db.diary.filter(x=>x.id!==id); gasRun('deleteDiary',id); renderDiaryList(); }
-  else { db[type]=db[type].filter(x=>x.id!==id); gasRun('deleteRow',sheetMap[type],id); }
+  else {
+    var rec=db[type].find(x=>x.id===id);
+    db[type]=db[type].filter(x=>x.id!==id);
+    gasRun('deleteRow',sheetMap[type],id,rec&&rec.date);
+  }
   closeActionModal();
   document.getElementById('dailyPopupModal').classList.remove('active');
   if(document.getElementById('historyModal').classList.contains('active')) openHistory(type);
