@@ -355,11 +355,16 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     <!-- 부상 경고 -->
     <div id="injuryWarning" class="hidden mb-3 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-lg text-xs text-orange-700 dark:text-orange-300"><i class="fa-solid fa-triangle-exclamation mr-1"></i><span id="injuryWarningText"></span></div>
     <!-- 유튜브 동작 영상 버튼 -->
-    <div id="woYoutubeArea" class="hidden mb-3 flex gap-2 items-center">
-      <a id="woYoutubeLink" href="#" target="_blank" class="flex-1 flex items-center justify-center gap-2 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 font-bold text-sm active:bg-red-100 transition-colors">
-        <i class="fa-brands fa-youtube text-lg"></i>동작 영상 보기
-      </a>
-      <button onclick="openYoutubeEditModal()" class="px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 text-xs" title="영상 링크 수정"><i class="fa-solid fa-pen text-xs"></i></button>
+    <div id="woYoutubeArea" class="hidden mb-3">
+      <div class="flex gap-2 items-center">
+        <button id="woYoutubeToggleBtn" onclick="toggleYoutubeInline()" class="flex-1 flex items-center justify-center gap-2 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 font-bold text-sm active:bg-red-100 transition-colors">
+          <i class="fa-brands fa-youtube text-lg"></i><span id="woYoutubeToggleLabel">동작 영상 보기</span>
+        </button>
+        <button onclick="openYoutubeEditModal()" class="px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 text-xs" title="영상 링크 수정"><i class="fa-solid fa-pen text-xs"></i></button>
+      </div>
+      <div id="woYoutubeEmbedWrap" class="hidden mt-2 rounded-lg overflow-hidden bg-black" style="aspect-ratio:16/9;">
+        <iframe id="woYoutubeIframe" class="w-full h-full" src="" title="동작 영상" frameborder="0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+      </div>
     </div>
     <div id="woYoutubeAddArea" class="hidden mb-3">
       <button onclick="openYoutubeEditModal()" class="w-full py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-xs text-gray-400 dark:text-gray-500 hover:border-red-300 hover:text-red-400 transition-colors">
@@ -2497,6 +2502,7 @@ function toggleDarkMode() {
 var tabs=['home','plan','workout','nutrition','measure','diary'];
 function switchTab(tabId) {
   currentTab=tabId;
+  if(tabId!=='workout') collapseYoutubeInline(); // 운동탭을 벗어나면 재생 중인 영상 정지
   document.querySelectorAll('.tab-content').forEach(function(el){el.classList.remove('active');});
   document.querySelectorAll('.nav-item').forEach(function(el){ el.classList.remove('text-blue-600','dark:text-blue-400'); el.classList.add('text-gray-400','dark:text-gray-500'); });
   var tabEl = document.getElementById('tab-'+tabId);
@@ -2852,6 +2858,7 @@ function openAddExerciseModal(){
 }
 // ========== 유튜브 동작 영상 ==========
 var youtubeEditTarget = { part:'', name:'' };
+var currentYoutubeVideo = null; // {id, start} - 현재 카드에 표시된 종목의 영상 정보
 
 function parseYoutubeId(input) {
   if(!input) return '';
@@ -2872,17 +2879,42 @@ function buildYoutubeUrl(videoId, startSec) {
 function updateYoutubeButton(part, name) {
   var areaShow = document.getElementById('woYoutubeArea');
   var areaAdd  = document.getElementById('woYoutubeAddArea');
-  if(!part || !name) { areaShow.classList.add('hidden'); areaAdd.classList.add('hidden'); return; }
+  // 운동 종목이 바뀌면 재생 중이던 임베드는 접어서 정지시킴
+  collapseYoutubeInline();
+  if(!part || !name) { areaShow.classList.add('hidden'); areaAdd.classList.add('hidden'); currentYoutubeVideo=null; return; }
   var exData = db.refExercise[part] && db.refExercise[part][name];
   var youtube = exData ? (exData.youtube || '') : '';
   if(youtube) {
     var sp = youtube.split(',');
-    var url = buildYoutubeUrl(sp[0].trim(), parseInt(sp[1])||0);
-    document.getElementById('woYoutubeLink').href = url;
+    currentYoutubeVideo = { id: sp[0].trim(), start: parseInt(sp[1])||0 };
     areaShow.classList.remove('hidden'); areaAdd.classList.add('hidden');
   } else {
+    currentYoutubeVideo = null;
     areaShow.classList.add('hidden'); areaAdd.classList.remove('hidden');
   }
+}
+
+// 카드 안에서 유튜브 영상을 바로 재생/정지 (새 탭으로 이동하지 않음)
+function toggleYoutubeInline() {
+  var wrap = document.getElementById('woYoutubeEmbedWrap');
+  if(wrap.classList.contains('hidden')) {
+    if(!currentYoutubeVideo || !currentYoutubeVideo.id) return;
+    var src = 'https://www.youtube.com/embed/' + currentYoutubeVideo.id
+      + '?start=' + (currentYoutubeVideo.start||0) + '&autoplay=1&playsinline=1';
+    document.getElementById('woYoutubeIframe').src = src;
+    wrap.classList.remove('hidden');
+    document.getElementById('woYoutubeToggleLabel').innerText = '영상 접기';
+  } else {
+    collapseYoutubeInline();
+  }
+}
+
+function collapseYoutubeInline() {
+  var wrap = document.getElementById('woYoutubeEmbedWrap');
+  if(!wrap || wrap.classList.contains('hidden')) return;
+  document.getElementById('woYoutubeIframe').src = ''; // src 비워서 재생 정지
+  wrap.classList.add('hidden');
+  document.getElementById('woYoutubeToggleLabel').innerText = '동작 영상 보기';
 }
 
 function openYoutubeEditModal() {
