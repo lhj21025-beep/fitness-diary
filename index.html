@@ -2471,7 +2471,7 @@ function openDailyPopup(dateStr) {
   if(wData.length>0) html+=buildWorkoutAccordionHTML(wData, dateStr+'-p');
   if(nData.length>0){
     html+='<h3 class="font-bold text-green-600 dark:text-green-400 mb-2 mt-4 border-b dark:border-gray-700 pb-1"><i class="fa-solid fa-apple-whole mr-1"></i>영양</h3><ul class="space-y-1 text-sm mb-4">';
-    nData.sort(function(a,b){return a.time.localeCompare(b.time);}).forEach(function(n){ html+='<li class="history-item flex justify-between p-2 rounded active:bg-gray-200 dark:active:bg-gray-600 cursor-pointer" data-type="nutrition" data-id="'+n.id+'"><span class="text-gray-500">'+n.time+' '+n.name+'</span><span class="font-bold">'+n.qty+n.unit+'</span></li>'; });
+    nData.sort(function(a,b){return a.time.localeCompare(b.time);}).forEach(function(n){ var proteinStr=nutritionProteinBadge(n,'text-blue-500'); html+='<li class="history-item flex justify-between p-2 rounded active:bg-gray-200 dark:active:bg-gray-600 cursor-pointer" data-type="nutrition" data-id="'+n.id+'"><span class="text-gray-500">'+n.time+' '+n.name+'</span><span class="font-bold">'+n.qty+n.unit+proteinStr+'</span></li>'; });
     html+='</ul>';
   }
   if(mData.length>0){
@@ -2496,6 +2496,21 @@ function goToDateTab(tab, dateStr) {
 }
 
 // ========== 다크모드 / 탭 ==========
+
+function initNativeDateTimePickers() {
+  document.addEventListener('click', function(e) {
+    var el = e.target && e.target.closest ? e.target.closest('input[type="date"], input[type="time"]') : null;
+    if(!el || el.disabled || el.readOnly) return;
+    try {
+      if(typeof el.showPicker === 'function') el.showPicker();
+      else el.focus();
+    } catch(err) {
+      try { el.focus(); } catch(ignore) {}
+    }
+  }, true);
+}
+initNativeDateTimePickers();
+
 function initDarkMode() {
   if(localStorage.getItem('theme')==='dark'){ document.documentElement.classList.add('dark'); document.getElementById('themeIcon').classList.replace('fa-moon','fa-sun'); }
 }
@@ -2818,6 +2833,18 @@ function updateTodayVolume(){
   var date=document.getElementById('woDate').value;
   document.getElementById('todayVolume').innerText=calculateVolume(db.workout.filter(w=>w.date===date)).toLocaleString();
 }
+function getNutritionRecordProtein(n){
+  if(!n) return 0;
+  var snap = parseFloat(n.protein);
+  if(Number.isFinite(snap) && snap > 0) return Math.round(snap * 10) / 10;
+  return Math.round(calculateProtein([n]) * 10) / 10;
+}
+function nutritionProteinBadge(n, colorClass) {
+  var p = getNutritionRecordProtein(n);
+  if(!(p > 0)) return '';
+  return '<span class="text-xs '+(colorClass||'text-blue-500')+' ml-1">(단백질 '+p+'g)</span>';
+}
+
 function updateTodayViews(){
   var tStr=getTodayStr();
   var wData=db.workout.filter(w=>w.date===tStr);
@@ -2832,14 +2859,7 @@ function updateTodayViews(){
       var totalProtein = calculateProtein(nData);
       nv.innerHTML='<ul class="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-200 dark:border-gray-700 space-y-2 text-sm">'
         + nData.map(function(n){
-          // 단백질 개별 계산
-          var ref = window.db.refNutrition && window.db.refNutrition[n.name];
-          var proteinStr = '';
-          if(ref && ref.protein > 0) {
-            var defaultQty = parseFloat(ref.qty) || 1;
-            var p = Math.round(ref.protein * (parseFloat(n.qty)||0) / defaultQty * 10) / 10;
-            proteinStr = '<span class="text-xs text-blue-500 ml-1">(단백질 '+p+'g)</span>';
-          }
+          var proteinStr = nutritionProteinBadge(n, 'text-blue-500');
           return '<li class="history-item flex justify-between border-b border-gray-100 dark:border-gray-700 border-dashed pb-2 last:border-0 p-1 rounded cursor-pointer" data-type="nutrition" data-id="'+n.id+'">'
             +'<span class="text-gray-500 w-12">'+n.time+'</span>'
             +'<span class="flex-grow">'+n.name+'</span>'
@@ -3287,6 +3307,7 @@ function saveNutrition(){
   // 시간 미입력 시 현재 시각 자동 입력
   if(!document.getElementById('nuTime').value) setNutritionTimeNow();
   var data={id:editingId||'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:document.getElementById('nuDate').value,time:document.getElementById('nuTime').value,name:document.getElementById('nuName').value,qty:document.getElementById('nuQty').value,unit:document.getElementById('nuUnit').value};
+  data.protein = getNutritionRecordProtein(data);
   if(!data.name){customAlert('영양제명을 선택하세요.');isSavingRecord=false;return;}
   if(editingId){var idx=db.nutrition.findIndex(function(w){return w.id===editingId;});if(idx>-1)db.nutrition[idx]=data;editingId=null;editingType=null;resetSaveButton('btnSaveNutrition','bg-green-600');gasRun('updateRow','영양',data);}
   else{db.nutrition.push(data);gasRun('saveRow','nutrition',data);}
@@ -4301,7 +4322,7 @@ function openHistory(type) {
       else if(type==='nutrition'){
         data.sort((a,b)=>a.time.localeCompare(b.time));
         html+=`<ul class="space-y-2 text-sm mt-2">`;
-        data.forEach(n=>{ html+=`<li class="history-item flex justify-between border-b border-gray-200 dark:border-gray-600 border-dashed pb-2 p-2 rounded cursor-pointer" data-type="nutrition" data-id="${n.id}"><span class="text-gray-500">${n.time}</span><span class="font-bold">${n.name} <span class="text-green-600">${n.qty}${n.unit}</span></span></li>`; });
+        data.forEach(n=>{ var proteinStr=nutritionProteinBadge(n,'text-blue-500'); html+=`<li class="history-item flex justify-between border-b border-gray-200 dark:border-gray-600 border-dashed pb-2 p-2 rounded cursor-pointer" data-type="nutrition" data-id="${n.id}"><span class="text-gray-500">${n.time}</span><span class="font-bold">${n.name} <span class="text-green-600">${n.qty}${n.unit}${proteinStr}</span></span></li>`; });
         html+='</ul>';
       } else if(type==='measure'){
         html+='<div class="space-y-2 mt-2">';
