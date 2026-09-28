@@ -2716,10 +2716,16 @@ function stopTimer(){isTimerRunning=false;timerWorker.postMessage({cmd:'stop'});
 function addTimer(s){var r=isTimerRunning?Math.round((timerEndTimestamp-Date.now())/1000):lastSetTimer;var nt=Math.max(0,(r<0?0:r)+s);if(isTimerRunning)startTimer(nt);else{lastSetTimer=nt;updateTimerDisplayUI();}}
 
 // ========== 운동 셀렉트 ==========
+// Firestore의 등록 순서와 관계없이 모든 운동 선택 목록을 가나다순으로 표시한다.
+var exerciseNameCollator = new Intl.Collator('ko-KR', {numeric:true});
+function sortedExerciseKeys(items){
+  return Object.keys(items || {}).sort(function(a,b){ return exerciseNameCollator.compare(a,b); });
+}
+
 function setupSelects(){
   var p=document.getElementById('woPart');
   p.innerHTML='<option value="">선택</option>';
-  Object.keys(db.refExercise).forEach(part=>{p.innerHTML+=`<option value="${part}">${part}</option>`;});
+  sortedExerciseKeys(db.refExercise).forEach(part=>{p.innerHTML+=`<option value="${part}">${part}</option>`;});
   var n=document.getElementById('nuName');
   n.innerHTML='<option value="">선택</option>';
   Object.keys(db.refNutrition).forEach(name=>{n.innerHTML+=`<option value="${name}">${name}</option>`;});
@@ -2729,7 +2735,7 @@ function updateExercises(){
   var part=document.getElementById('woPart').value;
   var ns=document.getElementById('woName');
   ns.innerHTML='<option value="">선택하세요</option>';
-  if(part&&db.refExercise[part]) Object.keys(db.refExercise[part]).forEach(function(name){ns.innerHTML+='<option value="'+name+'">'+name+'</option>';});
+  if(part&&db.refExercise[part]) sortedExerciseKeys(db.refExercise[part]).forEach(function(name){ns.innerHTML+='<option value="'+name+'">'+name+'</option>';});
   // 부위 변경 시 무게/횟수 초기화 (이전 종목 값 혼선 방지)
   if(!editingId) {
     document.getElementById('woWeight').value='';
@@ -3394,12 +3400,12 @@ function setupPlanSelects(){
   var ps=document.getElementById('planPart');
   var sv=ps.value;
   ps.innerHTML='<option value="">선택</option><option value="__super__">슈퍼세트</option>';
-  Object.keys(db.refExercise).sort().forEach(p=>{ps.innerHTML+=`<option value="${p}">${p}</option>`;});
+  sortedExerciseKeys(db.refExercise).forEach(p=>{ps.innerHTML+=`<option value="${p}">${p}</option>`;});
   if(sv) ps.value=sv;
   ['superPart1','superPart2'].forEach(id=>{
     var sel=document.getElementById(id), v=sel.value;
     sel.innerHTML='<option value="">선택</option>';
-    Object.keys(db.refExercise).sort().forEach(p=>{sel.innerHTML+=`<option value="${p}">${p}</option>`;});
+    sortedExerciseKeys(db.refExercise).forEach(p=>{sel.innerHTML+=`<option value="${p}">${p}</option>`;});
     if(v) sel.value=v;
   });
 }
@@ -3419,13 +3425,13 @@ function updatePlanExercises(mode){
   if(mode==='normal'){
     var p=document.getElementById('planPart').value, sel=document.getElementById('planName');
     sel.innerHTML='<option value="">선택하세요</option>';
-    if(p&&db.refExercise[p]) Object.keys(db.refExercise[p]).forEach(n=>{sel.innerHTML+=`<option value="${n}">${n}</option>`;});
+    if(p&&db.refExercise[p]) sortedExerciseKeys(db.refExercise[p]).forEach(n=>{sel.innerHTML+=`<option value="${n}">${n}</option>`;});
   } else {
     var partId=mode==='super1'?'superPart1':'superPart2';
     var nameId=mode==='super1'?'superName1':'superName2';
     var p=document.getElementById(partId).value, sel=document.getElementById(nameId);
     sel.innerHTML='<option value="">선택</option>';
-    if(p&&db.refExercise[p]) Object.keys(db.refExercise[p]).forEach(n=>{sel.innerHTML+=`<option value="${n}">${n}</option>`;});
+    if(p&&db.refExercise[p]) sortedExerciseKeys(db.refExercise[p]).forEach(n=>{sel.innerHTML+=`<option value="${n}">${n}</option>`;});
   }
 }
 
@@ -3593,7 +3599,7 @@ function savePlanExercise(){
   document.getElementById('planName').value = '';
   document.getElementById('planName').innerHTML='<option value="">선택하세요</option>';
   if(part && part !== '__super__' && db.refExercise[part]) {
-    Object.keys(db.refExercise[part]).forEach(function(n){
+    sortedExerciseKeys(db.refExercise[part]).forEach(function(n){
       document.getElementById('planName').innerHTML += '<option value="'+n+'">'+n+'</option>';
     });
   }
@@ -3829,7 +3835,7 @@ function syncWorkoutTabFromPlan(date, part, name, weight, reps, unit) {
     if(woNameEl) {
       woNameEl.innerHTML = '<option value="">선택하세요</option>';
       if(db.refExercise[part]) {
-        Object.keys(db.refExercise[part]).forEach(function(n) {
+        sortedExerciseKeys(db.refExercise[part]).forEach(function(n) {
           woNameEl.innerHTML += '<option value="'+n+'">'+n+'</option>';
         });
       }
