@@ -349,6 +349,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
       <label class="input-label text-gray-600 dark:text-gray-400">운동명</label>
       <div class="flex gap-2 w-full">
         <select id="woName" onchange="updateExerciseInfo()" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white"><option value="">부위를 먼저 선택하세요</option></select>
+        <button onclick="openEditExerciseModal()" class="shrink-0 bg-blue-100 text-blue-700 px-2 rounded-lg text-sm font-bold dark:bg-blue-900 dark:text-blue-200">수정</button>
         <button onclick="openAddExerciseModal()" class="shrink-0 bg-gray-100 text-gray-600 px-3 rounded-lg text-sm font-bold dark:bg-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-500"><i class="fa-solid fa-plus"></i></button>
       </div>
     </div>
@@ -638,6 +639,19 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
       <button class="flex-1 bg-gray-200 dark:bg-gray-700 py-3 rounded-lg font-bold dark:text-white" onclick="document.getElementById('addExerciseModal').classList.remove('active')">취소</button>
       <button class="flex-1 bg-blue-600 text-white font-bold py-3 rounded-lg" onclick="saveCustomExercise()">추가하기</button>
     </div>
+  </div>
+</div>
+
+<!-- 종목 수정 모달 -->
+<div id="editExerciseModal" class="modal" style="z-index:250;">
+  <div class="modal-content bg-white dark:bg-gray-800 pb-10">
+    <h3 class="text-lg font-bold mb-4 text-center">운동 종목 수정</h3>
+    <p id="editExPart" class="text-sm text-gray-500 mb-3"></p>
+    <div class="input-row"><label for="editExName" class="input-label">운동명</label><input id="editExName" type="text" maxlength="100" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700"></div>
+    <div class="input-row"><label for="editExUnit" class="input-label">단위</label><select id="editExUnit" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700"><option>KG</option><option>LB</option><option>회</option><option>초</option></select></div>
+    <p class="text-xs text-gray-500 mb-4 leading-relaxed">운동명은 기존 기록·계획·템플릿에도 함께 반영됩니다. 단위는 앞으로 저장하는 기록부터 적용되며, 기존 기록의 단위와 중량 숫자는 유지됩니다. 계획의 중량 숫자도 자동 환산되지 않으니 확인해주세요.</p>
+    <p id="editExError" role="alert" class="text-sm text-red-500 mb-3"></p>
+    <div class="flex gap-2"><button id="editExCancel" onclick="document.getElementById('editExerciseModal').classList.remove('active')" class="flex-1 bg-gray-200 dark:bg-gray-700 py-3 rounded-lg font-bold">취소</button><button id="editExSave" onclick="saveExerciseEdit()" class="flex-1 bg-blue-600 text-white py-3 rounded-lg font-bold">수정 저장</button></div>
   </div>
 </div>
 
@@ -1311,7 +1325,7 @@ function loadDataFromFirestore() {
     var dayDocs     = results[0].docs.map(function(d){ var o=d.data()||{}; if(!o.date) o.date=d.id; return o; });
     var measure     = results[1].docs.map(function(d){return sanitizeRecord(d.data());});
     var diary       = results[2].docs.map(function(d){return sanitizeRecord(d.data());});
-    var exercises   = results[3].docs.map(function(d){return d.data();});
+    var exercises   = results[3].docs.map(function(d){return Object.assign({},d.data(),{_docId:d.id});});
     var templates   = results[4].docs.map(function(d){return d.data();});
     var repeatPlans = results[5].docs.map(function(d){return d.data();});
     var goals       = results[6].docs.map(function(d){return sanitizeRecord(d.data());});
@@ -1347,7 +1361,7 @@ function loadDataFromFirestore() {
     console.log('로딩 - 운동:'+workouts.length+'건, 영양:'+nutrition.length+'건, 계획:'+plans.length+'건');
 
     var dataRef = exercises.map(function(e){
-      return {type:'ex', part:e.part, name:e.name, unit:e.unit||'KG', typeFlag:e.typeFlag||'', youtube:e.youtube||''};
+      return {type:'ex', _docId:e._docId, part:e.part, name:e.name, unit:e.unit||'KG', typeFlag:e.typeFlag||'', youtube:e.youtube||''};
     });
     nutritionRef.forEach(function(n){
       dataRef.push({type:'nut', name:n.name, unit:n.unit||'', qty:n.qty||0, protein:n.protein||0});
@@ -1412,7 +1426,7 @@ function db_ref_nutrition_update(d) {
 
   db.refExercise = {}; db.refNutrition = {};
   (data.dataRef||[]).forEach(row => {
-    if(row.type==='ex'){ if(!db.refExercise[row.part]) db.refExercise[row.part]={}; db.refExercise[row.part][row.name]={unit:row.unit,typeFlag:row.typeFlag||'',youtube:row.youtube||''}; }
+    if(row.type==='ex'){ if(!db.refExercise[row.part]) db.refExercise[row.part]={}; db.refExercise[row.part][row.name]={unit:row.unit,typeFlag:row.typeFlag||'',youtube:row.youtube||'',_docId:row._docId}; }
     else if(row.type==='nut') db.refNutrition[row.name]={unit:row.unit,qty:row.qty,protein:row.protein||0};
   });
 
@@ -1594,12 +1608,14 @@ function handleFirestoreOp(fnName, args) {
 
   } else if(fnName === 'addExerciseRef') {
     var data = a[0];
-    var exId = data.part + '_' + data.name;
-    db.collection('exercises').doc(exId).set(data);
+    var ref = db.collection('exercises').doc();
+    window.db.refExercise[data.part][data.name]._docId = ref.id;
+    ref.set(data).catch(function(e){ showToast('종목 저장 실패: '+e.message,false); });
 
   } else if(fnName === 'updateExerciseYoutube') {
     var part = a[0], name = a[1], youtube = a[2];
-    var exId = part + '_' + name;
+    var ex = window.db.refExercise[part] && window.db.refExercise[part][name];
+    var exId = (ex && ex._docId) || part + '_' + name;
     db.collection('exercises').doc(exId).update({youtube: youtube});
 
   } else {
@@ -2788,9 +2804,9 @@ function updateExerciseInfo(){
   var maxRec=null;
   specific.forEach(w=>{ if(!maxRec) maxRec=w; else { var w1=parseFloat(w.weight)||0,w2=parseFloat(maxRec.weight)||0; if((w.unit||'').toUpperCase()==='LB')w1*=0.453592; if((maxRec.unit||'').toUpperCase()==='LB')w2*=0.453592; if(w1>w2||(w1===w2&&(parseInt(w.reps)||0)>(parseInt(maxRec.reps)||0))) maxRec=w; } });
   var latest=specific.length>0?specific[specific.length-1]:null;
-  if(maxRec){ document.getElementById('woMaxWeight').innerText=maxRec.weight||0; document.getElementById('woMaxReps').innerText=maxRec.reps; document.getElementById('woMaxDate').innerText=maxRec.date; }
+  if(maxRec){ document.getElementById('woMaxWeight').innerText=exerciseWeightForUnit(maxRec.weight,maxRec.unit,exData.unit)||0; document.getElementById('woMaxReps').innerText=maxRec.reps; document.getElementById('woMaxDate').innerText=maxRec.date; }
   if(!editingId){
-    if(latest){ document.getElementById('woWeight').value=latest.weight; document.getElementById('woReps').value=latest.reps; document.getElementById('woRepsSlider').value=latest.reps<=20?latest.reps:20; }
+    if(latest){ document.getElementById('woWeight').value=exerciseWeightForUnit(latest.weight,latest.unit,exData.unit); document.getElementById('woReps').value=latest.reps; document.getElementById('woRepsSlider').value=latest.reps<=20?latest.reps:20; }
     else{ document.getElementById('woWeight').value=''; document.getElementById('woReps').value=''; document.getElementById('woRepsSlider').value=0; }
     document.getElementById('woMemo').value=''; calculate1RM();
   }
@@ -3012,9 +3028,113 @@ function clearYoutubeLink() {
   showToast('영상 링크가 삭제되었습니다.', true);
 }
 
+// Exercise references retain their Firestore document IDs when renamed.
+var editingExerciseTarget = null;
+function exerciseWeightForUnit(weight, from, to){
+  from=String(from||'KG').toUpperCase(); to=String(to||'KG').toUpperCase();
+  if(from===to) return weight;
+  if(!['KG','LB'].includes(from)||!['KG','LB'].includes(to)) return '';
+  return Math.round((parseFloat(weight)||0)*(from==='LB'?0.453592:1/0.453592)*100)/100;
+}
+function openEditExerciseModal(){
+  var part=document.getElementById('woPart').value, name=document.getElementById('woName').value;
+  var ex=db.refExercise[part] && db.refExercise[part][name];
+  if(!ex){showToast('수정할 운동을 먼저 선택해주세요.',false);return;}
+  if(editingId){showToast('현재 기록 수정을 완료한 뒤 종목을 수정해주세요.',false);return;}
+  editingExerciseTarget={part:part,name:name,docId:ex._docId||part+'_'+name};
+  document.getElementById('editExPart').textContent='부위: '+part;
+  document.getElementById('editExName').value=name;
+  document.getElementById('editExUnit').value=ex.unit||'KG';
+  document.getElementById('editExError').textContent='';
+  document.getElementById('editExerciseModal').classList.add('active');
+}
+// Mutate only explicit exercise references; never replace free text or weight values.
+function renameExerciseReferences(value,part,oldName,newName){
+  if(!value || typeof value!=='object') return false;
+  var changed=false;
+  if(value.part===part && value.name===oldName){value.name=newName;changed=true;}
+  [1,2].forEach(function(i){
+    if(value['part'+i]===part && value['name'+i]===oldName){value['name'+i]=newName;changed=true;}
+  });
+  ['sets','exercises'].forEach(function(key){
+    if(Array.isArray(value[key])) value[key].forEach(function(item){if(renameExerciseReferences(item,part,oldName,newName)) changed=true;});
+  });
+  if(changed && value.part==='__super__' && value.sets && value.sets.length){
+    value.name='[슈퍼세트] '+(value.sets[0].name1||'')+'+'+(value.sets[0].name2||'');
+  }
+  return changed;
+}
+async function saveExerciseEdit(){
+  var target=editingExerciseTarget, name=document.getElementById('editExName').value.trim(), unit=document.getElementById('editExUnit').value;
+  var error=document.getElementById('editExError'), button=document.getElementById('editExSave'), cancel=document.getElementById('editExCancel');
+  if(button.disabled || !target) return;
+  if(!name){error.textContent='운동명을 입력해주세요.';return;}
+  if(!navigator.onLine || !window.firestoreDb){error.textContent='인터넷 연결 후 다시 저장해주세요.';return;}
+  if(!['KG','LB','회','초'].includes(unit)){error.textContent='단위를 선택해주세요.';return;}
+  button.disabled=cancel.disabled=true; button.textContent='저장 중…'; error.textContent='';
+  try{
+    var fs=window.firestoreDb, renamed=name!==target.name;
+    await fs.waitForPendingWrites();
+    var collections=['exercises'];
+    if(renamed) collections.push('days','templates','repeatPlans');
+    var snapshots=await Promise.all(collections.map(function(c){return fs.collection(c).get({source:'server'});}));
+    var original=snapshots[0].docs.find(function(d){return d.id===target.docId;});
+    if(!original) throw new Error('종목을 찾을 수 없습니다. 새로고침 후 다시 시도해주세요.');
+    if(snapshots[0].docs.some(function(d){var ex=d.data();return d.id!==target.docId && ex.part===target.part && ex.name===name;})) throw new Error('같은 부위에 이미 등록된 운동명입니다.');
+    var affected=[];
+    snapshots.slice(1).forEach(function(snap,index){
+      snap.docs.forEach(function(doc){
+        var data=doc.data(), changed=false;
+        if(collections[index+1]==='days'){
+          ['workouts','plans'].forEach(function(key){Object.values(data[key]||{}).forEach(function(rec){if(renameExerciseReferences(rec,target.part,target.name,name)) changed=true;});});
+        }else changed=renameExerciseReferences(data,target.part,target.name,name);
+        if(changed) affected.push({ref:doc.ref,day:collections[index+1]==='days'});
+      });
+    });
+    if(affected.length>450) throw new Error('변경할 날짜가 너무 많습니다. 안전한 일괄 변경이 필요합니다.');
+    await fs.runTransaction(async function(tx){
+      var refs=[original.ref].concat(affected.map(function(x){return x.ref;}));
+      var fresh=await Promise.all(refs.map(function(ref){return tx.get(ref);}));
+      var current=fresh[0].data();
+      if(!current || current.name!==target.name || current.part!==target.part) throw new Error('다른 화면에서 종목이 변경되었습니다. 새로고침 후 다시 시도해주세요.');
+      tx.update(original.ref,{name:name,unit:unit});
+      affected.forEach(function(item,index){
+        if(!fresh[index+1].exists) return;
+        var data=fresh[index+1].data();
+        if(item.day){
+          var patch={};
+          ['workouts','plans'].forEach(function(key){
+            var changed=false;
+            Object.values(data[key]||{}).forEach(function(rec){if(renameExerciseReferences(rec,target.part,target.name,name)) changed=true;});
+            if(changed) patch[key]=data[key];
+          });
+          if(Object.keys(patch).length) tx.update(item.ref,patch);
+        }else if(renameExerciseReferences(data,target.part,target.name,name)) tx.set(item.ref,data);
+      });
+    });
+    var ex=db.refExercise[target.part][target.name];
+    if(renamed){
+      delete db.refExercise[target.part][target.name];
+      [db.workout,db.plan,db.templates,db.repeatPlans].forEach(function(items){items.forEach(function(item){renameExerciseReferences(item,target.part,target.name,name);});});
+      planSets.forEach(function(item){renameExerciseReferences(item,target.part,target.name,name);});
+    }
+    db.refExercise[target.part][name]=Object.assign({},ex,{unit:unit,_docId:target.docId});
+    setupSelects(); setupPlanSelects();
+    ['normal','super1','super2'].forEach(updatePlanExercises);
+    document.getElementById('woPart').value=target.part; updateExercises();
+    document.getElementById('woName').value=name; updateExerciseInfo();
+    document.getElementById('editExerciseModal').classList.remove('active');
+    editingExerciseTarget=null;
+    renderPlanList(); updateTodayViews(); updateOneRmSelect();
+    showToast('운동명과 단위가 수정되었습니다.',true);
+  }catch(e){console.error('종목 수정 실패:',e);error.textContent='저장하지 못했습니다: '+e.message;}
+  finally{button.disabled=cancel.disabled=false;button.textContent='수정 저장';}
+}
+
 function saveCustomExercise(){
   var part=document.getElementById('newExPart').value.trim(), name=document.getElementById('newExName').value.trim(), unit=document.getElementById('newExUnit').value, tf=document.getElementById('newExTypeFlag').checked?'한쪽':'';
   if(!part||!name) return customAlert('부위와 운동명을 입력하세요.');
+  if(db.refExercise[part] && Object.prototype.hasOwnProperty.call(db.refExercise[part],name)) return customAlert('이미 등록된 운동명입니다. 수정 버튼을 이용해주세요.');
   if(!db.refExercise[part]) db.refExercise[part]={};
   db.refExercise[part][name]={unit,typeFlag:tf};
   setupSelects(); setupPlanSelects();
@@ -3460,7 +3580,7 @@ function getLastWorkoutForExercise(name){
   var f=db.workout.filter(w=>w.name===name);
   if(!f.length) return null;
   var lastDate=f[f.length-1].date;
-  return f.filter(w=>w.date===lastDate).map(s=>({weight:parseFloat(s.weight)||0,reps:parseInt(s.reps)||15}));
+  return f.filter(w=>w.date===lastDate).map(function(s){var ex=db.refExercise[s.part]&&db.refExercise[s.part][s.name];return {weight:parseFloat(exerciseWeightForUnit(s.weight,s.unit,ex?ex.unit:s.unit))||0,reps:parseInt(s.reps)||15};});
 }
 
 function onPlanNameChange(){
