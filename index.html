@@ -206,6 +206,8 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     </div>
     <div class="h-64 w-full"><canvas id="oneRmChart"></canvas></div>
   </div>
+  <div class="flex items-center justify-between gap-2 text-xs text-gray-500 mb-2"><span id="measureRangeLabel"></span><button onclick="resetMeasureRange()" class="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700">기본 범위</button></div>
+  <p class="text-xs text-gray-500 mb-3">두 손가락을 벌리면 확대, 오므리면 축소 · 점선은 보이는 기록의 추세입니다. PC에서는 Ctrl+휠로 조절하세요.</p>
   <div class="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4 shadow-sm border dark:border-gray-700"><h3 class="font-semibold text-gray-600 dark:text-gray-400 mb-2 text-sm">체중 (kg)</h3><div class="h-64 w-full"><canvas id="weightChart"></canvas></div></div>
   <div class="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4 shadow-sm border dark:border-gray-700"><h3 class="font-semibold text-gray-600 dark:text-gray-400 mb-2 text-sm">팔 둘레 (cm)</h3><div class="h-64 w-full"><canvas id="armChart"></canvas></div></div>
   <div class="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4 shadow-sm border dark:border-gray-700"><h3 class="font-semibold text-gray-600 dark:text-gray-400 mb-2 text-sm">가슴 둘레 (cm)</h3><div class="h-64 w-full"><canvas id="chestChart"></canvas></div></div>
@@ -1527,7 +1529,14 @@ function handleFirestoreOp(fnName, args) {
   } else if(fnName === 'updateRow') {
     var sheetName = a[0]; // '운동','영양','치수','일기'
     var data = a[1];
-    if(sheetName==='운동') { saveRecordToDayDoc('workouts', data); }
+    if(sheetName==='운동') {
+      if(a[2] && a[2]!==data.date){
+        var batch=db.batch(), payload={date:data.date,workouts:{}}; payload.workouts[data.id]=data;
+        batch.set(dayDocRef(data.date),payload,{merge:true});
+        batch.update(dayDocRef(a[2]),new firebase.firestore.FieldPath('workouts',data.id),firebase.firestore.FieldValue.delete());
+        batch.commit().catch(function(e){showToast('날짜 변경 저장 실패: '+e.message,false);});
+      } else saveRecordToDayDoc('workouts', data);
+    }
     else if(sheetName==='영양') { saveRecordToDayDoc('nutrition', data); }
     else {
       var sheetToCol = {'치수':'measurements','일기':'diary','목표':'goals'};
@@ -2343,7 +2352,7 @@ function updatePlanVsActualChart() {
   var planVols = last7.map(d => {
     var items = db.plan.filter(p=>p.date===d);
     var vol = 0;
-    items.forEach(item => { (item.sets||[]).forEach(s=>{ if(item.part!=='__super__') vol+=((s.weight||0)*(s.reps||0)); }); });
+    items.forEach(item => { (item.sets||[]).forEach(s=>{ vol+=planSetVolume(item,s); }); });
     return Math.round(vol/1000*10)/10;
   });
   var actualVols = last7.map(d => {
@@ -2465,7 +2474,7 @@ function openDailyPopup(dateStr) {
   var totalPro=calculateProtein(nData);
   if(totalPro>0) volArr.push('단백질: '+Math.round(totalPro)+'g');
   var planTotal=0;
-  pData.forEach(function(item){ (item.sets||[]).forEach(function(s){ if(item.part==='__super__') planTotal+=(s.weight1||0)*(s.reps1||0)+(s.weight2||0)*(s.reps2||0); else planTotal+=(s.weight||0)*(s.reps||0); }); });
+  pData.forEach(function(item){ (item.sets||[]).forEach(function(s){ planTotal+=planSetVolume(item,s); }); });
   if(planTotal>0) volArr.push('계획실행률: '+Math.round(dailyVol/planTotal*100)+'%');
   document.getElementById('dailyPopupTitle').innerHTML=dateStr+'<span class="text-sm font-normal text-blue-500 ml-2">('+volArr.join(', ')+')</span>';
 
@@ -2613,7 +2622,7 @@ function switchTab(tabId) {
 var touchStartX=0;
 document.addEventListener('touchstart',e=>{touchStartX=e.changedTouches[0].screenX;},{passive:true});
 document.addEventListener('touchend',e=>{
-  if(document.querySelector('.modal.active')||e.target.closest('input[type="range"]')) return;
+  if(document.querySelector('.modal.active')||e.target.closest('input[type="range"],canvas[data-measure-gestures]')) return;
   var diff=touchStartX-e.changedTouches[0].screenX;
   var ci=tabs.indexOf(currentTab);
   if(diff>120&&ci<tabs.length-1) document.querySelectorAll('.nav-item')[ci+1].click();
@@ -3170,6 +3179,8 @@ function checkAndShowPR(data){
 // ========== 저장 함수들 ==========
 function saveWorkout(){
   if(isSavingRecord) return; isSavingRecord=true; setTimeout(()=>{isSavingRecord=false;},1000);
+  var wasEditing=!!editingId;
+  var previous=wasEditing?db.workout.find(w=>w.id===editingId):null;
   var rawMemo=document.getElementById('woMemo').value;
   var wPart=document.getElementById('woPart').value;
   var now=new Date();
@@ -3188,10 +3199,15 @@ function saveWorkout(){
     time:timeStr, duration:dur, absTime:now.getTime(), rawMemo
   };
   if(!data.name||!data.reps){customAlert('운동명과 반복횟수를 입력하세요.');isSavingRecord=false;return;}
+  if(previous){
+    data.time=previous.time||timeStr; data.duration=previous.duration||''; data.absTime=previous.absTime||data.absTime;
+    data.memo='['+(previous.time||timeStr)+'|'+(previous.duration||'')+'] '+rawMemo;
+    if(data.part===previous.part && data.name===previous.name) data.unit=previous.unit||data.unit;
+  }
   if(editingId){
     var idx=db.workout.findIndex(w=>w.id===editingId); if(idx>-1) db.workout[idx]=data;
     editingId=null; editingType=null; resetSaveButton('btnSaveWorkout','bg-blue-600');
-    gasRun('updateRow','운동',data);
+    gasRun('updateRow','운동',data,previous&&previous.date);
   } else {
     checkAndShowPR(data);
     db.workout.push(data);
@@ -3202,23 +3218,59 @@ function saveWorkout(){
   document.getElementById('woMemo').value='';
 
   // 계획에 없던 종목이면 현재 운동 다음 순서로 계획 자동 추가
-  if(!editingId) {
-    autoAddToPlanIfNeeded(data);
-  }
+  if(wasEditing) syncEditedWorkoutToPlan(data,previous);
+  else autoAddToPlanIfNeeded(data);
 
-  if(document.getElementById('autoTimerToggle').checked){ startTimer(lastSetTimer); window.scrollTo({top:0,behavior:'smooth'}); }
+  if(!wasEditing && document.getElementById('autoTimerToggle').checked){ startTimer(lastSetTimer); window.scrollTo({top:0,behavior:'smooth'}); }
 }
 
 // 운동탭에서 저장 시 계획에 없던 종목이면 자동으로 계획에 추가하고,
 // 이미 계획에 있는 종목이면 방금 저장한 세트를 계획의 실적으로 연결(완료 처리)한다.
+function syncEditedWorkoutToPlan(data,previous){
+  var moved=previous&&(previous.date!==data.date||previous.part!==data.part||previous.name!==data.name);
+  if(moved){unlinkPlanByWorkoutId(data.id);autoAddToPlanIfNeeded(data);return;}
+  db.plan.forEach(function(item){
+    var changed=false;
+    (item.sets||[]).forEach(function(set){
+      var suffixes=item.part==='__super__'?['1','2']:[''];
+      suffixes.forEach(function(k){if(set['workoutId'+k]===data.id){
+        set['actual_weight'+k]=parseFloat(data.weight)||0;
+        set['actual_reps'+k]=parseInt(data.reps)||0;
+        set['actual_unit'+k]=data.unit||'KG'; changed=true;
+      }});
+    });
+    if(changed){clearTimeout(item._saveTimer);gasRun('updatePlanItem',item);}
+  });
+  renderPlanList(); updatePlanExecRate(); updatePlanVsActualChart();
+}
+function exerciseUnit(part,name){
+  var ex=db.refExercise[part]&&db.refExercise[part][name];
+  return ex&&ex.unit?ex.unit:'KG';
+}
+function planSetUnit(item,set,k,actual){
+  k=k||'';
+  if(actual){
+    var w=db.workout.find(function(w){return w.id===set['workoutId'+k];});
+    if(w) return w.unit||'KG';
+    if(set['actual_unit'+k]) return set['actual_unit'+k];
+  }
+  return set['unit'+k]||exerciseUnit(k?set['part'+k]:item.part,k?set['name'+k]:item.name);
+}
+function planSetVolume(item,set){
+  return (item.part==='__super__'?['1','2']:['']).reduce(function(sum,k){
+    return sum+calculateSingleSetVolume({date:item.date,part:k?set['part'+k]:item.part,name:k?set['name'+k]:item.name,weight:set['weight'+k]||0,reps:set['reps'+k]||0,unit:planSetUnit(item,set,k,false)});
+  },0);
+}
+
 function autoAddToPlanIfNeeded(workoutData) {
+  if(db.plan.some(function(p){return (p.sets||[]).some(function(s){return [s.workoutId,s.workoutId1,s.workoutId2].includes(workoutData.id);});})){syncEditedWorkoutToPlan(workoutData);return;}
   var date = workoutData.date;
   var name = workoutData.name;
   var part = workoutData.part;
 
   // 이미 계획에 있는 종목인지 확인 (슈퍼셋 항목은 이름 매칭 방식이 달라 제외)
   var existingPlan = db.plan.find(function(p) {
-    return p.date === date && p.name === name && p.part !== '__super__';
+    return p.date === date && p.name === name && p.part === part;
   });
   if(existingPlan) { linkWorkoutToPlanItem(existingPlan, workoutData); return; }
 
@@ -3251,7 +3303,7 @@ function autoAddToPlanIfNeeded(workoutData) {
   var newSet = {
     weight: 0, reps: 0,
     actual_weight: parseFloat(workoutData.weight)||0, actual_reps: parseInt(workoutData.reps)||0,
-    done: true, workoutId: workoutData.id, extra: true
+    actual_unit:workoutData.unit||'KG', done: true, workoutId: workoutData.id, extra: true
   };
 
   var newPlan = {
@@ -3280,12 +3332,12 @@ function linkWorkoutToPlanItem(item, workoutData) {
     target.done = true;
     target.workoutId = workoutData.id;
     target.actual_weight = parseFloat(workoutData.weight)||0;
-    target.actual_reps = parseInt(workoutData.reps)||0;
+    target.actual_reps = parseInt(workoutData.reps)||0; target.actual_unit=workoutData.unit||'KG';
   } else {
     item.sets.push({
       weight: 0, reps: 0,
       actual_weight: parseFloat(workoutData.weight)||0, actual_reps: parseInt(workoutData.reps)||0,
-      done: true, workoutId: workoutData.id, extra: true
+      actual_unit:workoutData.unit||'KG', done: true, workoutId: workoutData.id, extra: true
     });
   }
   item.status = item.sets.every(function(s){ return item.part==='__super__' ? (s.done1&&s.done2) : s.done; }) ? 'done' : 'planned';
@@ -3465,7 +3517,8 @@ function scrollHeatmapToToday() {
     if(t.startsWith(today.substring(0,7))) { targetCell = cells[i]; break; }
   }
   if(targetCell) {
-    targetCell.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+    var cellRect=targetCell.getBoundingClientRect(), gridRect=grid.getBoundingClientRect();
+    grid.scrollLeft+=cellRect.left-gridRect.left-grid.clientWidth/2+cellRect.width/2;
   } else {
     var month = new Date().getMonth();
     grid.scrollLeft = grid.scrollWidth * (month / 12);
@@ -3614,7 +3667,7 @@ function onPlanNameChange(){
         planSets.push({weight:s.weight,reps:s.reps,actual_weight:s.weight,actual_reps:s.reps});
       }
       var ld=db.workout.filter(function(w){return w.name===name;}).slice(-1)[0]?db.workout.filter(function(w){return w.name===name;}).slice(-1)[0].date:'';
-      document.getElementById('planLastRecordText').innerText='최근기록('+ld+'): '+last.length+'세트, '+last.map(function(s,i){return (i+1)+'세트 '+s.weight+'kg×'+s.reps+'회';}).join(' / ');
+      document.getElementById('planLastRecordText').innerText='최근기록('+ld+'): '+last.length+'세트, '+last.map(function(s,i){return (i+1)+'세트 '+s.weight+exerciseUnit(part,name)+'×'+s.reps+'회';}).join(' / ');
       document.getElementById('planLastRecord').classList.remove('hidden');
     } else { initPlanSets(); document.getElementById('planLastRecord').classList.add('hidden'); }
     renderPlanSets();
@@ -3639,7 +3692,7 @@ function renderPlanSets(){
           <span class="text-xs font-bold text-gray-400 w-8">${i+1}세트</span>
           <span class="text-xs text-purple-500 w-14 truncate">${n1}</span>
           <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight1||0}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].weight1=parseFloat(this.value)||0">
-          <span class="text-xs text-gray-400">kg×</span>
+          <span class="text-xs text-gray-400">${exerciseUnit(document.getElementById('superPart1').value,n1)}×</span>
           <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps1||15}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].reps1=parseInt(this.value)||15">
           <span class="text-xs text-gray-400">회</span>
         </div>
@@ -3647,7 +3700,7 @@ function renderPlanSets(){
           <span class="text-xs font-bold text-gray-400 w-8"></span>
           <span class="text-xs text-indigo-500 w-14 truncate">${n2}</span>
           <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight2||0}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].weight2=parseFloat(this.value)||0">
-          <span class="text-xs text-gray-400">kg×</span>
+          <span class="text-xs text-gray-400">${exerciseUnit(document.getElementById('superPart2').value,n2)}×</span>
           <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps2||15}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].reps2=parseInt(this.value)||15">
           <span class="text-xs text-gray-400">회</span>
         </div>
@@ -3658,7 +3711,7 @@ function renderPlanSets(){
       html+=`<div class="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2 mb-1">
         <span class="text-xs font-bold text-gray-400 w-8">${i+1}세트</span>
         <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight||0}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].weight=parseFloat(this.value)||0">
-        <span class="text-xs text-gray-500 dark:text-gray-400">kg×</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400">${exerciseUnit(part,document.getElementById('planName').value)}×</span>
         <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps||15}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].reps=parseInt(this.value)||15">
         <span class="text-xs text-gray-500 dark:text-gray-400">회</span>
       </div>`;
@@ -3726,13 +3779,13 @@ function savePlanExercise(){
     var n1=document.getElementById('superName1').value, n2=document.getElementById('superName2').value;
     var p1=document.getElementById('superPart1').value, p2=document.getElementById('superPart2').value;
     if(!n1&&!n2){showToast('운동명을 선택해주세요.',false);return;}
-    var sets=planSets.map(function(s){return {weight1:s.weight1||0,reps1:s.reps1||15,weight2:s.weight2||0,reps2:s.reps2||15,part1:p1,name1:n1,part2:p2,name2:n2,done1:false,done2:false};});
+    var sets=planSets.map(function(s){return {weight1:s.weight1||0,reps1:s.reps1||15,weight2:s.weight2||0,reps2:s.reps2||15,part1:p1,name1:n1,part2:p2,name2:n2,unit1:exerciseUnit(p1,n1),unit2:exerciseUnit(p2,n2),done1:false,done2:false};});
     var item={id:'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:date,part:'__super__',name:'[슈퍼세트] '+(n1||'')+'+'+(n2||''),order:insertOrder,sets:sets,status:'planned'};
     db.plan.push(item); gasRun('savePlanItem',item);
   } else {
     var name=document.getElementById('planName').value;
     if(!name){showToast('운동명을 선택해주세요.',false);return;}
-    var sets=planSets.map(function(s){return {weight:s.weight||0,reps:s.reps||15,actual_weight:s.weight||0,actual_reps:s.reps||15,done:false};});
+    var sets=planSets.map(function(s){return {unit:exerciseUnit(part,name),weight:s.weight||0,reps:s.reps||15,actual_weight:s.weight||0,actual_reps:s.reps||15,done:false};});
     var item={id:'plan_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:date,part:part,name:name,order:insertOrder,sets:sets,status:'planned'};
     db.plan.push(item); gasRun('savePlanItem',item);
   }
@@ -3765,11 +3818,7 @@ function renderPlanList(){
   function calcVolRate(item){
     var pv=0;
     (item.sets||[]).forEach(function(s){
-      if(item.part==='__super__'){
-        pv+=(s.weight1||0)*(s.reps1||0)+(s.weight2||0)*(s.reps2||0);
-      } else {
-        pv+=(s.weight||0)*(s.reps||0);
-      }
+      pv+=planSetVolume(item,s);
     });
     if(pv===0) return 0;
     // 해당 종목의 실제 운동 볼륨 (초과 세트 포함)
@@ -3835,10 +3884,10 @@ function renderPlanList(){
         setsHtml+='<div class="plan-set-item flex items-center gap-1 rounded -mx-1 px-1" data-plan-id="'+item.id+'" data-set-idx="'+si+'" data-mode="super1">';
         setsHtml+='<span class="text-xs font-bold text-gray-400 w-8">'+(si+1)+'세트</span>';
         setsHtml+='<span class="text-xs text-purple-500 w-12 truncate">'+(set.name1||'')+'</span>';
-        setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+(set.weight1||0)+'×'+(set.reps1||15)+'</span>';
+        setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+(set.weight1||0)+planSetUnit(item,set,'1',false)+'×'+(set.reps1||15)+'</span>';
         setsHtml+='<div class="flex-1 flex items-center gap-0.5 justify-center">';
         setsHtml+='<input type="number" '+inpW+' value="'+aw1+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight1" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
-        setsHtml+='<span class="text-[10px] text-gray-400">×</span>';
+        setsHtml+='<span class="text-[10px] text-gray-400">'+planSetUnit(item,set,'1',true)+'×</span>';
         setsHtml+='<input type="number" '+inpR+' value="'+ar1+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_reps1" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='</div>';
         setsHtml+='<button data-id="'+item.id+'" data-si="'+si+'" data-mode="super1" onclick="savePlanSetNow(this.dataset.id,parseInt(this.dataset.si),this.dataset.mode)" class="set-done-btn '+(d1?'saved':'unsaved')+' w-14 text-center">'+(d1?'<i class="fa-solid fa-check mr-1"></i>완료':'저장')+'</button>';
@@ -3847,10 +3896,10 @@ function renderPlanList(){
         setsHtml+='<div class="plan-set-item flex items-center gap-1 rounded -mx-1 px-1" data-plan-id="'+item.id+'" data-set-idx="'+si+'" data-mode="super2">';
         setsHtml+='<span class="text-xs font-bold text-gray-400 w-8"></span>';
         setsHtml+='<span class="text-xs text-indigo-500 w-12 truncate">'+(set.name2||'')+'</span>';
-        setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+(set.weight2||0)+'×'+(set.reps2||15)+'</span>';
+        setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+(set.weight2||0)+planSetUnit(item,set,'2',false)+'×'+(set.reps2||15)+'</span>';
         setsHtml+='<div class="flex-1 flex items-center gap-0.5 justify-center">';
         setsHtml+='<input type="number" '+inpW+' value="'+aw2+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight2" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
-        setsHtml+='<span class="text-[10px] text-gray-400">×</span>';
+        setsHtml+='<span class="text-[10px] text-gray-400">'+planSetUnit(item,set,'2',true)+'×</span>';
         setsHtml+='<input type="number" '+inpR+' value="'+ar2+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_reps2" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='</div>';
         setsHtml+='<button data-id="'+item.id+'" data-si="'+si+'" data-mode="super2" onclick="savePlanSetNow(this.dataset.id,parseInt(this.dataset.si),this.dataset.mode)" class="set-done-btn '+(d2?'saved':'unsaved')+' w-14 text-center">'+(d2?'<i class="fa-solid fa-check mr-1"></i>완료':'저장')+'</button>';
@@ -3861,13 +3910,13 @@ function renderPlanList(){
         var ar=set.actual_reps!=null?set.actual_reps:(set.extra?(set.actual_reps||0):(set.reps||15));
         var done=set.done;
         var extraSetBadge=set.extra?'<span class="text-[9px] font-bold text-orange-500 bg-orange-100 dark:bg-orange-900/30 px-1 rounded ml-0.5">추가</span>':'';
-        var planTargetText=set.extra?'계획없음':((set.weight||0)+'kg×'+(set.reps||15)+'회');
+        var planTargetText=set.extra?'계획없음':((set.weight||0)+planSetUnit(item,set,'',false)+'×'+(set.reps||15)+'회');
         setsHtml+='<div class="plan-set-item flex items-center gap-1 py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-0 rounded -mx-1 px-1" data-plan-id="'+item.id+'" data-set-idx="'+si+'" data-mode="normal">';
         setsHtml+='<span class="text-xs font-bold text-gray-400 w-8 flex items-center">'+(si+1)+'세트'+extraSetBadge+'</span>';
         setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+planTargetText+'</span>';
         setsHtml+='<div class="flex-1 flex items-center gap-0.5 justify-center">';
         setsHtml+='<input type="number" '+inpW+' value="'+aw+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
-        setsHtml+='<span class="text-[10px] text-gray-400">×</span>';
+        setsHtml+='<span class="text-[10px] text-gray-400">'+planSetUnit(item,set,'',true)+'×</span>';
         setsHtml+='<input type="number" '+inpR+' value="'+ar+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_reps" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='</div>';
         setsHtml+='<button data-id="'+item.id+'" data-si="'+si+'" data-mode="normal" onclick="savePlanSetNow(this.dataset.id,parseInt(this.dataset.si),this.dataset.mode)" class="set-done-btn '+(done?'saved':'unsaved')+' w-14 text-center">'+(done?'<i class="fa-solid fa-check mr-1"></i>완료':'저장')+'</button>';
@@ -3926,7 +3975,7 @@ function savePlanSetNow(planId,setIdx,mode){
     // 수행값 우선 사용, 없으면 계획값
     savedWeight=set.actual_weight!=null?set.actual_weight:(set.weight||0);
     savedReps=set.actual_reps!=null?set.actual_reps:(set.reps||0);
-    savedUnit=(db.refExercise[item.part]&&db.refExercise[item.part][item.name]?db.refExercise[item.part][item.name].unit:'KG');
+    savedUnit=planSetUnit(item,set,'',true);
     var data={id:'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:item.date,part:savedPart,name:savedName,weight:savedWeight,unit:savedUnit,reps:savedReps,memo:memo,time:timeStr,duration:dur,absTime:now.getTime(),rawMemo:''};
     db.workout.push(data); set.done=true; set.workoutId=data.id;
     // actual 값 확정 저장
@@ -3937,7 +3986,7 @@ function savePlanSetNow(planId,setIdx,mode){
     savedPart=set.part1||''; savedName=set.name1||'';
     savedWeight=set.actual_weight1!=null?set.actual_weight1:(set.weight1||0);
     savedReps=set.actual_reps1!=null?set.actual_reps1:(set.reps1||0);
-    savedUnit=(db.refExercise[savedPart]&&db.refExercise[savedPart][savedName]?db.refExercise[savedPart][savedName].unit:'KG');
+    savedUnit=planSetUnit(item,set,'1',true);
     var data={id:'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:item.date,part:savedPart,name:savedName,weight:savedWeight,unit:savedUnit,reps:savedReps,memo:memo,time:timeStr,duration:dur,absTime:now.getTime(),rawMemo:''};
     db.workout.push(data); set.done1=true; set.workoutId1=data.id;
     set.actual_weight1=savedWeight; set.actual_reps1=savedReps;
@@ -3947,7 +3996,7 @@ function savePlanSetNow(planId,setIdx,mode){
     savedPart=set.part2||''; savedName=set.name2||'';
     savedWeight=set.actual_weight2!=null?set.actual_weight2:(set.weight2||0);
     savedReps=set.actual_reps2!=null?set.actual_reps2:(set.reps2||0);
-    savedUnit=(db.refExercise[savedPart]&&db.refExercise[savedPart][savedName]?db.refExercise[savedPart][savedName].unit:'KG');
+    savedUnit=planSetUnit(item,set,'2',true);
     var data={id:'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:item.date,part:savedPart,name:savedName,weight:savedWeight,unit:savedUnit,reps:savedReps,memo:memo,time:timeStr,duration:dur,absTime:now.getTime(),rawMemo:''};
     db.workout.push(data); set.done2=true; set.workoutId2=data.id;
     set.actual_weight2=savedWeight; set.actual_reps2=savedReps;
@@ -4028,11 +4077,7 @@ function updatePlanExecRate(){
   var totalPlanVol=0;
   items.forEach(function(item){
     (item.sets||[]).forEach(function(s){
-      if(item.part==='__super__'){
-        totalPlanVol+=(s.weight1||0)*(s.reps1||0)+(s.weight2||0)*(s.reps2||0);
-      } else {
-        totalPlanVol+=(s.weight||0)*(s.reps||0);
-      }
+      totalPlanVol+=planSetVolume(item,s);
     });
   });
 
@@ -4056,18 +4101,19 @@ function renderPlanEditSets(isSuper){
   var c=document.getElementById('planEditSetsContainer');
   var isDark=document.documentElement.classList.contains('dark');
   var ibg=isDark?'bg-gray-600 text-white':'bg-white text-gray-800';
+  var item=db.plan.find(p=>p.id===editingPlanId);
   var html='';
   if(isSuper){
     editingPlanSets.forEach((set,i)=>{
       html+=`<div class="flex flex-col gap-1 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
         <div class="flex items-center gap-2"><span class="text-xs font-bold text-gray-400 w-8">${i+1}세트</span><span class="text-xs text-purple-500 w-16 truncate">${set.name1||'운동1'}</span>
           <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight1||0}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].weight1=parseFloat(this.value)||0">
-          <span class="text-xs text-gray-400">kg×</span>
+          <span class="text-xs text-gray-400">${planSetUnit(item,set,'1',false)}×</span>
           <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps1||15}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].reps1=parseInt(this.value)||15">
           <span class="text-xs text-gray-400">회</span></div>
         <div class="flex items-center gap-2"><span class="text-xs font-bold text-gray-400 w-8"></span><span class="text-xs text-indigo-500 w-16 truncate">${set.name2||'운동2'}</span>
           <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight2||0}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].weight2=parseFloat(this.value)||0">
-          <span class="text-xs text-gray-400">kg×</span>
+          <span class="text-xs text-gray-400">${planSetUnit(item,set,'2',false)}×</span>
           <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps2||15}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].reps2=parseInt(this.value)||15">
           <span class="text-xs text-gray-400">회</span></div>
       </div>`;
@@ -4077,7 +4123,7 @@ function renderPlanEditSets(isSuper){
       html+=`<div class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
         <span class="text-xs font-bold text-gray-400 w-8">${i+1}세트</span>
         <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight||0}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].weight=parseFloat(this.value)||0">
-        <span class="text-xs text-gray-500">kg×</span>
+        <span class="text-xs text-gray-500">${planSetUnit(item,set,'',false)}×</span>
         <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps||15}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].reps=parseInt(this.value)||15">
         <span class="text-xs text-gray-500">회</span>
       </div>`;
@@ -4515,6 +4561,7 @@ function editSelectedRecord(){
     document.getElementById('woDate').value=item.date;
     document.getElementById('woPart').value=item.part; updateExercises();
     document.getElementById('woName').value=item.name; updateExerciseInfo();
+    document.querySelectorAll('.woUnitLabel').forEach(el=>{el.innerText=item.unit||'KG';});
     document.getElementById('woWeight').value=item.weight;
     document.getElementById('woReps').value=item.reps;
     document.getElementById('woRepsSlider').value=item.reps<=20?item.reps:20;
@@ -4594,6 +4641,7 @@ function unlinkPlanByWorkoutId(workoutId){
 // ========== 차트 ==========
 function setChartPeriod(period){
   currentChartPeriod=period;
+  measureRangeSpan=measureDefaultSpan(period);
   ['daily','weekly','monthly'].forEach(p=>{
     var btn=document.getElementById(`btnPeriod-${p}`);
     if(p===period){btn.classList.replace('text-gray-500','text-gray-900');btn.classList.add('bg-white','dark:bg-gray-500','shadow-sm');btn.classList.remove('dark:text-gray-300');}
@@ -4602,17 +4650,88 @@ function setChartPeriod(period){
   updateCharts();
 }
 
+// Continuous calendar-based window; missing measurements are not treated as zero.
+var measureRangeSpan=30, measureZoomFrame=null;
+function measureDefaultSpan(period){return period==='daily'?30:24;}
+function measurePeriodIndex(date,period){
+  var parts=String(date).slice(0,10).split('-').map(Number);
+  if(parts.length!==3 || !parts.every(Number.isFinite)) return NaN;
+  var day=Date.UTC(parts[0],parts[1]-1,parts[2])/86400000;
+  if(period==='monthly') return parts[0]*12+parts[1]-1;
+  if(period==='weekly') return Math.floor((day+4)/7); // Sunday-start calendar weeks
+  return day;
+}
+function measureIndexLabel(index,period){
+  index=Math.round(index);
+  if(period==='monthly') return Math.floor(index/12)+'-'+String(index%12+1).padStart(2,'0');
+  var day=period==='weekly'?index*7-4:index;
+  return new Date(day*86400000).toISOString().slice(0,10)+(period==='weekly'?' 주':'');
+}
+function measureWindow(){
+  var end=measurePeriodIndex(getTodayStr(),currentChartPeriod)+0.5;
+  return {min:end-measureRangeSpan,max:end};
+}
 function aggregateData(period){
-  if(!db.measure.length) return {labels:[],weight:[],armL:[],armR:[],chest:[]};
-  var grouped={};
-  db.measure.forEach(m=>{
-    var key=m.date, d=new Date(m.date);
-    if(period==='weekly'){d.setDate(d.getDate()-d.getDay());key=d.toISOString().split('T')[0]+'(주)';}
-    else if(period==='monthly') key=m.date.substring(0,7);
-    grouped[key]=m;
+  var groups={}, keys=['weight','armL','armR','chest'];
+  db.measure.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(function(m){
+    var x=measurePeriodIndex(m.date,period); if(!Number.isFinite(x)) return;
+    if(!groups[x]) groups[x]={};
+    keys.forEach(function(k){var n=parseFloat(m[k]);if(Number.isFinite(n)&&n>0) groups[x][k]=n;});
   });
-  var labels=Object.keys(grouped).sort();
-  return {labels,weight:labels.map(k=>grouped[k].weight),armL:labels.map(k=>grouped[k].armL),armR:labels.map(k=>grouped[k].armR),chest:labels.map(k=>grouped[k].chest)};
+  var result={};
+  keys.forEach(function(k){result[k]=Object.keys(groups).map(Number).sort((a,b)=>a-b).filter(x=>groups[x][k]!=null).map(x=>({x:x,y:groups[x][k]}));});
+  return result;
+}
+function visibleTrend(points,min,max){
+  var rows=points.filter(p=>p.x>=min&&p.x<=max&&Number.isFinite(p.y));
+  if(rows.length<2) return [];
+  var mx=rows.reduce((n,p)=>n+p.x,0)/rows.length, my=rows.reduce((n,p)=>n+p.y,0)/rows.length;
+  var denominator=rows.reduce((n,p)=>n+(p.x-mx)*(p.x-mx),0);
+  if(!denominator) return [];
+  var slope=rows.reduce((n,p)=>n+(p.x-mx)*(p.y-my),0)/denominator;
+  return [rows[0].x,rows[rows.length-1].x].map(x=>({x:x,y:my+slope*(x-mx)}));
+}
+function resetMeasureRange(){measureRangeSpan=measureDefaultSpan(currentChartPeriod);updateMeasurementCharts();}
+function setMeasureZoomSpan(span){
+  var earliest=db.measure.reduce(function(min,m){var x=measurePeriodIndex(m.date,currentChartPeriod);return Number.isFinite(x)?Math.min(min,x):min;},measurePeriodIndex(getTodayStr(),currentChartPeriod));
+  var maximum=Math.max(measureDefaultSpan(currentChartPeriod)*4,measurePeriodIndex(getTodayStr(),currentChartPeriod)-earliest+1);
+  measureRangeSpan=Math.max(2,Math.min(maximum,span));
+  if(measureZoomFrame===null) measureZoomFrame=requestAnimationFrame(function(){measureZoomFrame=null;updateMeasurementCharts();});
+}
+function initMeasureGestures(){
+  ['weight','arm','chest'].forEach(function(key){
+    var canvas=document.getElementById(key+'Chart');
+    if(canvas.dataset.measureGestures) return;
+    canvas.dataset.measureGestures='1'; canvas.style.touchAction='pan-y';
+    var initialDistance=0,initialSpan=0;
+    function distance(t){return Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);}
+    canvas.addEventListener('touchstart',function(e){if(e.touches.length===2){e.preventDefault();initialDistance=distance(e.touches);initialSpan=measureRangeSpan;}},{passive:false});
+    canvas.addEventListener('touchmove',function(e){if(e.touches.length===2&&initialDistance>0){e.preventDefault();setMeasureZoomSpan(initialSpan*initialDistance/Math.max(1,distance(e.touches)));}},{passive:false});
+    ['touchend','touchcancel'].forEach(function(event){canvas.addEventListener(event,function(){initialDistance=0;},{passive:true});});
+    canvas.addEventListener('wheel',function(e){if(e.ctrlKey){e.preventDefault();setMeasureZoomSpan(measureRangeSpan*Math.exp(e.deltaY*0.005));}},{passive:false});
+  });
+}
+function updateMeasurementCharts(){
+  if(!charts.weight) return;
+  var data=aggregateData(currentChartPeriod), range=measureWindow();
+  var definitions={weight:[['weight','체중','#ef4444']],arm:[['armL','좌측','#3b82f6'],['armR','우측','#10b981']],chest:[['chest','가슴둘레','#8b5cf6']]};
+  Object.keys(definitions).forEach(function(key){
+    var c=charts[key], datasets=[];
+    definitions[key].forEach(function(def){
+      var points=data[def[0]].filter(p=>p.x>=range.min&&p.x<=range.max);
+      datasets.push({label:def[1],data:points,borderColor:def[2],backgroundColor:def[2],borderWidth:2,pointRadius:3,tension:0.2});
+      datasets.push({label:def[1]+' 추세',data:visibleTrend(points,range.min,range.max),borderColor:def[2],borderDash:[6,4],borderWidth:2,pointRadius:0,tension:0});
+    });
+    c.data.labels=[]; c.data.datasets=datasets;
+    c.options.animation=false; c.options.interaction={mode:'nearest',intersect:false};
+    c.options.scales.x={type:'linear',min:range.min,max:range.max,grid:{display:false},ticks:{color:getChartTextColor(),maxTicksLimit:6,precision:0,callback:function(v){return measureIndexLabel(v,currentChartPeriod);}}};
+    c.options.scales.y.ticks.color=getChartTextColor(); c.options.scales.y.grid.color=getChartGridColor();
+    c.options.plugins.legend.labels.color=getChartTextColor();
+    c.options.plugins.tooltip={callbacks:{title:function(items){return items.length?measureIndexLabel(items[0].parsed.x,currentChartPeriod):'';},label:function(ctx){return ctx.dataset.label+': '+Number(ctx.parsed.y.toFixed(2))+(key==='weight'?' kg':' cm');}}};
+    c.update('none');
+  });
+  var label=document.getElementById('measureRangeLabel');
+  if(label) label.textContent='최근 '+Number(measureRangeSpan.toFixed(1))+(currentChartPeriod==='daily'?'일':currentChartPeriod==='weekly'?'주':'개월')+' · '+measureIndexLabel(Math.ceil(range.min),currentChartPeriod)+' ~ '+measureIndexLabel(Math.floor(range.max),currentChartPeriod);
 }
 
 function aggregate1RMData(period,exName){
@@ -4650,6 +4769,7 @@ function initCharts(){
   charts.arm=new Chart(document.getElementById('armChart').getContext('2d'),{type:'line',data:{labels:[],datasets:[{label:'좌측',borderColor:'#3b82f6',backgroundColor:'#93c5fd',data:[],tension:0.3,borderWidth:3,pointRadius:4},{label:'우측',borderColor:'#10b981',backgroundColor:'#6ee7b7',data:[],tension:0.3,borderWidth:3,pointRadius:4}]},options:JSON.parse(JSON.stringify(base))});
   charts.chest=new Chart(document.getElementById('chestChart').getContext('2d'),{type:'line',data:{labels:[],datasets:[{label:'가슴둘레',borderColor:'#8b5cf6',backgroundColor:'#c4b5fd',data:[],tension:0.3,borderWidth:3,pointRadius:4}]},options:JSON.parse(JSON.stringify(base))});
   charts.oneRm=new Chart(document.getElementById('oneRmChart').getContext('2d'),{type:'line',data:{labels:[],datasets:[{label:'1RM (kg)',borderColor:'#f59e0b',backgroundColor:'#fde68a',data:[],tension:0.3,borderWidth:3,pointRadius:4}]},options:JSON.parse(JSON.stringify(base))});
+  initMeasureGestures();
   updateCharts();
 }
 
@@ -4667,13 +4787,7 @@ function updateOneRmChart(){
 }
 
 function updateCharts(){
-  if(!charts.weight) return;
-  var data=aggregateData(currentChartPeriod);
-  var tc=getChartTextColor(),gc=getChartGridColor();
-  [charts.weight,charts.arm,charts.chest].forEach(c=>{c.options.plugins.legend.labels.color=tc;c.options.scales.x.ticks.color=tc;c.options.scales.y.ticks.color=tc;c.options.scales.y.grid.color=gc;});
-  charts.weight.data.labels=data.labels; charts.weight.data.datasets[0].data=data.weight; charts.weight.update();
-  charts.arm.data.labels=data.labels; charts.arm.data.datasets[0].data=data.armL; charts.arm.data.datasets[1].data=data.armR; charts.arm.update();
-  charts.chest.data.labels=data.labels; charts.chest.data.datasets[0].data=data.chest; charts.chest.update();
+  updateMeasurementCharts();
   updateOneRmSelect();
 }
 
@@ -4686,9 +4800,12 @@ function initHapticFeedback(){
 }
 
 window.onload=function(){
+  if('scrollRestoration' in history) history.scrollRestoration='manual';
+  window.scrollTo(0,0);
   initApp();
   initFirestore();
 };
 </script>
 </body>
 </html>
+
