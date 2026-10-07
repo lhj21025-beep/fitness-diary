@@ -4724,7 +4724,7 @@ function updateMeasurementCharts(){
     });
     c.data.labels=[]; c.data.datasets=datasets;
     c.options.animation=false; c.options.interaction={mode:'nearest',intersect:false};
-    c.options.scales.x={type:'linear',min:range.min,max:range.max,grid:{display:false},ticks:{color:getChartTextColor(),maxTicksLimit:6,precision:0,callback:function(v){return measureIndexLabel(v,currentChartPeriod);}}};
+    c.options.scales.x={type:'linear',min:range.min,max:range.max,grid:{display:false},ticks:{color:getChartTextColor(),maxTicksLimit:6,precision:0,callback:function(v){return Math.abs(v-Math.round(v))<0.00001?measureIndexLabel(v,currentChartPeriod):'';}}};
     c.options.scales.y.ticks.color=getChartTextColor(); c.options.scales.y.grid.color=getChartGridColor();
     c.options.plugins.legend.labels.color=getChartTextColor();
     c.options.plugins.tooltip={callbacks:{title:function(items){return items.length?measureIndexLabel(items[0].parsed.x,currentChartPeriod):'';},label:function(ctx){return ctx.dataset.label+': '+Number(ctx.parsed.y.toFixed(2))+(key==='weight'?' kg':' cm');}}};
