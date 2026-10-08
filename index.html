@@ -236,6 +236,15 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
   </div>
 </div>
 
+<div id="diaryReadModal" class="modal" style="z-index:240;" onclick="closeModalOnBg(event,'diaryReadModal')">
+  <div class="modal-content bg-white dark:bg-gray-800">
+    <div class="flex justify-between items-center mb-4"><h2 id="diaryReadTitle" class="text-lg font-bold"></h2><button type="button" aria-label="일기 닫기" onclick="document.getElementById('diaryReadModal').classList.remove('active')" class="p-3 text-xl">×</button></div>
+    <p id="diaryReadMeta" class="text-sm text-gray-500 dark:text-gray-400 mb-3"></p>
+    <div id="diaryReadMeal" class="whitespace-pre-wrap break-words text-sm mb-4"></div>
+    <div id="diaryReadMemo" class="whitespace-pre-wrap break-words leading-relaxed"></div>
+  </div>
+</div>
+
 <!-- ===== 계획 탭 ===== -->
 <div id="tab-plan" class="tab-content p-4">
   <div class="flex justify-between items-end mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">
@@ -1156,7 +1165,7 @@ function openManualModal() {
       icon: 'fa-book-open', color: 'text-orange-500', title: '일기 탭',
       body: [
         '오늘의 컨디션(최고/좋음/보통/나쁨), 수면시간, 식사, 자유 메모를 기록할 수 있습니다.',
-        '최근 일기 목록에서 과거 기록을 확인하고, 길게 눌러 수정/삭제할 수 있습니다.'
+        '최근 일기와 전체 기록 목록에서 일기를 짧게 누르면 전체 내용을 팝업으로 읽을 수 있습니다. 긴 글은 팝업 안에서 스크롤하고, X 또는 바깥 배경을 눌러 닫습니다. 길게 누르면 수정/삭제할 수 있습니다.'
       ]
     },
     {
@@ -3569,7 +3578,7 @@ function renderDiaryList(){
   var recent=db.diary.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
   var condEmoji={'최고':'😄','좋음':'🙂','보통':'😐','나쁨':'😟'};
   if(!recent.length){el.innerHTML='<p class="text-sm text-gray-400 text-center py-4">일기가 없습니다.</p>';return;}
-  el.innerHTML=recent.map(d=>`<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-sm history-item cursor-pointer" data-type="diary" data-id="${d.id}">
+  el.innerHTML=recent.map(d=>`<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-sm history-item cursor-pointer" data-type="diary" data-id="${d.id}" role="button" tabindex="0" aria-label="일기 전체 읽기">
     <div class="flex justify-between items-start mb-1">
       <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">${d.date}</span>
       <div class="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -3579,8 +3588,32 @@ function renderDiaryList(){
     </div>
     ${d.meal?`<p class="text-xs text-gray-500 dark:text-gray-400 mb-1"><i class="fa-solid fa-utensils mr-1"></i>${d.meal}</p>`:''}
     ${d.memo?`<p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">${d.memo}</p>`:''}
+    <p class="text-xs text-blue-500 mt-2">눌러서 전체 읽기 · 길게 눌러 수정/삭제</p>
   </div>`).join('');
 }
+
+function openDiaryRead(id){
+  var entry=db.diary.find(function(d){return String(d.id)===String(id);});
+  if(!entry) return;
+  document.getElementById('diaryReadTitle').textContent=entry.date+' 일기';
+  document.getElementById('diaryReadMeta').textContent=[entry.condition?'컨디션: '+entry.condition:'',entry.sleep!==undefined && entry.sleep!==''?'수면: '+entry.sleep+'시간':''].filter(Boolean).join(' · ');
+  document.getElementById('diaryReadMeal').textContent=entry.meal?'식사\n'+entry.meal:'';
+  document.getElementById('diaryReadMemo').textContent=entry.memo||'작성한 메모가 없습니다.';
+  var modal=document.getElementById('diaryReadModal');
+  modal.classList.add('active');
+  modal.querySelector('.modal-content').scrollTop=0;
+}
+function handleDiaryRead(e){
+  var item=e.target.closest && e.target.closest('.history-item[data-type="diary"]');
+  if(!item || document.getElementById('actionModal').classList.contains('active')) return;
+  if(e.type==='keydown'){
+    if(e.target!==item || (e.key!=='Enter' && e.key!==' ')) return;
+    e.preventDefault();
+  }
+  openDiaryRead(item.dataset.id);
+}
+document.addEventListener('click',handleDiaryRead);
+document.addEventListener('keydown',handleDiaryRead);
 
 // ========== 계획 탭 ==========
 function setupPlanSelects(){
@@ -4490,7 +4523,7 @@ function openHistory(type) {
       } else if(type==='diary'){
         var condEmoji={'최고':'😄','좋음':'🙂','보통':'😐','나쁨':'😟'};
         html+='<div class="space-y-2 mt-2">';
-        data.forEach(d=>{ html+=`<div class="history-item bg-white dark:bg-gray-800 p-3 rounded shadow-sm text-sm border border-gray-200 dark:border-gray-600 cursor-pointer" data-type="diary" data-id="${d.id}"><div class="flex justify-between mb-1"><span class="font-bold dark:text-white">${d.date}</span><span class="text-xs text-gray-400">${d.condition?condEmoji[d.condition]+' '+d.condition:''} ${d.sleep?d.sleep+'h':''}</span></div>${d.memo?`<p class="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">${d.memo}</p>`:''}</div>`; });
+        data.forEach(d=>{ html+=`<div class="history-item bg-white dark:bg-gray-800 p-3 rounded shadow-sm text-sm border border-gray-200 dark:border-gray-600 cursor-pointer" data-type="diary" data-id="${d.id}" role="button" tabindex="0" aria-label="일기 전체 읽기"><div class="flex justify-between mb-1"><span class="font-bold dark:text-white">${d.date}</span><span class="text-xs text-gray-400">${d.condition?condEmoji[d.condition]+' '+d.condition:''} ${d.sleep?d.sleep+'h':''}</span></div>${d.memo?`<p class="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">${d.memo}</p>`:''}</div>`; });
         html+='</div>';
       }
       html+='</div></div>';
