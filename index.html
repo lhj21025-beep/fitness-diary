@@ -2626,7 +2626,15 @@ function showToast(msg, isSuccess=false) {
 }
 function customAlert(msg){ showToast(msg,false); }
 function closeModalOnBg(e,modalId){
-  if(e.target.id===modalId){ document.getElementById(modalId).classList.remove('active'); if(window.location.hash==="#modal") history.back(); }
+  var modal=document.getElementById(modalId);
+  if(modal && e.target===modal){
+    e.stopPropagation();
+    modal.classList.remove('active');
+  }
+}
+// Old versions left a modal-only hash behind. Clear it without navigation.
+if(window.location.hash==='#modal'){
+  history.replaceState(history.state,'',window.location.pathname+window.location.search);
 }
 window.addEventListener("popstate",()=>{ document.querySelectorAll('.modal.active').forEach(m=>m.classList.remove('active')); });
 
@@ -4490,7 +4498,6 @@ function openHistory(type) {
   }
   document.getElementById('historyList').innerHTML=html;
   document.getElementById('historyModal').classList.add('active');
-  history.pushState(null,null,'#modal');
 }
 
 function closeHistoryModal(){ document.getElementById('historyModal').classList.remove('active'); }
