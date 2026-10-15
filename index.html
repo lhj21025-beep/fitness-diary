@@ -88,6 +88,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
 </style>
 </head>
 <body class="bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+<button id="writeStatus" type="button" hidden onclick="applyOfflineQueue()" style="position:fixed;top:8px;left:8px;right:8px;z-index:350;padding:10px;border-radius:10px;background:#92400e;color:white;font-size:13px"></button>
 <div id="toast" class="toast shadow-lg"></div>
 <div id="offlineBadge" class="offline-badge bg-red-500 text-white hidden"><i class="fa-solid fa-wifi-slash mr-1"></i>오프라인</div>
 <audio id="beepSound" src="https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3" preload="auto"></audio>
@@ -583,7 +584,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
       <h2 id="modalTitle" class="text-xl font-bold dark:text-white">기록 보기</h2>
       <button onclick="closeHistoryModal()" class="text-gray-500 dark:text-gray-300 text-2xl"><i class="fa-solid fa-xmark"></i></button>
     </div>
-    <div class="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">세부 기록을 길게 누르면 수정/삭제할 수 있습니다.</div>
+    <div class="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">세부 기록을 길게 누르면 수정/삭제할 수 있습니다. PC에서는 마우스 오른쪽 버튼을 사용하세요.</div>
     <div id="historyList" class="flex-grow overflow-y-auto pr-1"></div>
   </div>
 </div>
@@ -1165,7 +1166,7 @@ function openManualModal() {
       icon: 'fa-book-open', color: 'text-orange-500', title: '일기 탭',
       body: [
         '오늘의 컨디션(최고/좋음/보통/나쁨), 수면시간, 식사, 자유 메모를 기록할 수 있습니다.',
-        '최근 일기와 전체 기록 목록에서 일기를 짧게 누르면 전체 내용을 팝업으로 읽을 수 있습니다. 긴 글은 팝업 안에서 스크롤하고, X 또는 바깥 배경을 눌러 닫습니다. 길게 누르면 수정/삭제할 수 있습니다.'
+        '최근 일기와 전체 기록 목록에서 일기를 짧게 누르면 전체 내용을 팝업으로 읽을 수 있습니다. 긴 글은 팝업 안에서 스크롤하고, X 또는 바깥 배경을 눌러 닫습니다. 길게 누르면 수정/삭제할 수 있습니다. PC에서는 마우스 오른쪽 버튼을 사용하세요.'
       ]
     },
     {
@@ -1173,7 +1174,7 @@ function openManualModal() {
       body: [
         '하단 타이머: 세트 사이 휴식시간을 측정합니다. 재생/정지, +10초/-10초로 조절 가능합니다.',
         '다크모드: 타이머 옆 달/해 아이콘으로 전환됩니다.',
-        '데이터 저장: Firebase를 사용해 기록을 저장·동기화합니다. 오프라인일 때는 연결 상태를 확인하고, 재연결 후 기록이 반영되었는지 확인하세요.',
+        '데이터 저장: 저장 대기 상태와 서버 저장 완료를 구분합니다. 미완료 안내를 누르면 재시도합니다. 수정 중 다른 탭으로 이동하면 수정 모드가 해제됩니다. Firebase를 사용해 기록을 저장·동기화합니다. 오프라인일 때는 연결 상태를 확인하고, 재연결 후 기록이 반영되었는지 확인하세요.',
         'API키 설정: 홈 탭 "API키" 버튼에서 Gemini API 키와 주간 운동 목표 횟수를 설정할 수 있습니다. 키는 이 기기의 브라우저에 저장되며, AI 기능 사용 시 인증을 위해 Google Gemini에 전달됩니다. 분석에 필요한 기록도 함께 전송됩니다.',
         '데이터 내보내기: 홈 하단에서 운동·영양·치수·일기 중 필요한 항목을 골라 엑셀 파일로 내려받습니다.',
         '전체 화면(좌우 스와이프): 화면을 옆으로 밀면 탭 간 이동도 가능합니다.'
@@ -1432,6 +1433,9 @@ function db_ref_nutrition_update(d) {
   window.db.refNutrition[d.name] = { unit: d.unit||'', qty: d.qty||0, protein: d.protein||0 };
   updateNutritionList();
 }function processInitData(data) {
+  if(data && !data.isPartial && ((data.workout||[]).length||(data.diary||[]).length||(data.measure||[]).length) && !localStorage.getItem('fitnessSafetyBackup_20261015')){
+    try{localStorage.setItem('fitnessSafetyBackup_20261015',JSON.stringify({savedAt:new Date().toISOString(),data:data}));}catch(e){console.warn('기기 백업 공간 부족',e);}
+  }
   bodyWeightCache = {};
   if(!data) return;
   db.workout = data.workout || [];
@@ -1449,7 +1453,7 @@ function db_ref_nutrition_update(d) {
     var match = (w.memo||'').match(/^\[(\d{2}:\d{2}:\d{2})\|(.*?)\]\s*(.*)$/);
     if(match) { w.time=match[1]; w.duration=match[2]; w.rawMemo=match[3]; }
     else { var old=(w.memo||'').match(/^\[(\d{2}:\d{2})\]\s*(.*)$/); if(old){w.time=old[1]+':00';w.duration='';w.rawMemo=old[2];}else{w.time='';w.duration='';w.rawMemo=w.memo||'';} }
-    if(w.time){var p=w.time.split(':');var d=new Date();d.setHours(p[0],p[1],p[2]||0,0);w.absTime=d.getTime();}
+    if(w.time){var p=w.time.split(':');var d=new Date(w.date+'T00:00:00');d.setHours(p[0],p[1],p[2]||0,0);w.absTime=d.getTime();}
   });
 
   db.refExercise = {}; db.refNutrition = {};
@@ -1458,6 +1462,16 @@ function db_ref_nutrition_update(d) {
     else if(row.type==='nut') db.refNutrition[row.name]={unit:row.unit,qty:row.qty,protein:row.protein||0};
   });
 
+  offlineQueue.forEach(function(entry){
+    var a=entry.args||[],fn=entry.fn,kind,data,id;
+    var sheet={'운동':'workout','영양':'nutrition','치수':'measure','일기':'diary','목표':'goals'};
+    if(fn==='saveRow'){kind=a[0];data=a[1];}
+    else if(fn==='updateRow'){kind=sheet[a[0]];data=a[1];}
+    else if(fn==='deleteRow'){kind=sheet[a[0]];id=a[1];}
+    else{var map={savePlanItem:'plan',updatePlanItem:'plan',savePlanSetToWorkout:'workout',saveDiary:'diary',saveGoal:'goals',saveTemplate:'templates',saveRepeatPlan:'repeatPlans',deletePlanItem:'plan',deleteDiary:'diary',deleteGoal:'goals',deleteTemplate:'templates',deleteRepeatPlan:'repeatPlans'};kind=map[fn];if(fn.startsWith('delete'))id=a[0];else data=a[0];}
+    if(kind&&Array.isArray(db[kind])){var key=data&&data.id||id;db[kind]=db[kind].filter(function(x){return x.id!==key;});if(data)db[kind].push(data);}
+  });
+  db.measure.sort(function(a,b){return a.date.localeCompare(b.date);});
   setupSelects(); setupPlanSelects(); initPlanSets();
   initCharts(); setLastMeasurementValues(); updateTimerDisplayUI();
   updateAttendance(); renderGoalWeight(); updateTodayVolume();
@@ -1478,185 +1492,87 @@ function initOfflineDetection() {
   if(!navigator.onLine) badge.classList.remove('hidden');
 }
 
-function addToOfflineQueue(fn, args) {
-  offlineQueue.push({ fn, args, ts: Date.now() });
-  localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+// Persist each edit before submitting it; remove only after server acknowledgement.
+var writeBusy=false, writeScheduled=false, writeError='';
+function persistWriteQueue(){
+  try{localStorage.setItem('offlineQueue',JSON.stringify(offlineQueue));return true;}
+  catch(e){writeError='기기 저장 공간 부족: 이 화면을 닫지 마세요.';renderWriteStatus();return false;}
 }
-
-// ===== days 컬렉션 (일자별 통합 문서) 저장/삭제 헬퍼 =====
-// 운동 세트/영양 기록을 날짜별 문서 하나에 맵(id를 key로)으로 저장해 읽기 비용을 줄인다.
-function dayDocRef(date) {
-  return window.firestoreDb.collection('days').doc(date);
+function renderWriteStatus(){
+  var el=document.getElementById('writeStatus');if(!el)return;
+  el.hidden=!offlineQueue.length && !writeError;
+  el.textContent=writeError || (navigator.onLine?'서버 저장 대기 ':'오프라인 · 기기에 저장 대기 ')+offlineQueue.length+'건';
 }
-function saveRecordToDayDoc(field, data) {
-  var payload = { date: data.date };
-  payload[field] = {};
-  payload[field][data.id] = data;
-  dayDocRef(data.date).set(payload, { merge: true });
+function cleanWriteData(value){
+  return JSON.parse(JSON.stringify(value,function(k,v){return k==='_saveTimer'?undefined:v;}));
 }
-function deleteRecordFromDayDoc(field, date, id) {
-  var upd = {};
-  upd[field + '.' + id] = firebase.firestore.FieldValue.delete();
-  dayDocRef(date).update(upd);
-}
-
-function applyOfflineQueue() {
-  if(!IS_GAS || !navigator.onLine || offlineQueue.length===0) return;
-  var queue = [...offlineQueue];
-  offlineQueue = [];
-  localStorage.setItem('offlineQueue','[]');
-  queue.forEach(item => {
-    try {
-      var a = item.args || [];
-      var runner = google.script.run.withFailureHandler(function(e){console.error(e);});
-      switch(a.length) {
-        case 0: runner[item.fn](); break;
-        case 1: runner[item.fn](a[0]); break;
-        case 2: runner[item.fn](a[0],a[1]); break;
-        case 3: runner[item.fn](a[0],a[1],a[2]); break;
-        default: runner[item.fn](a[0],a[1],a[2],a[3]); break;
-      }
-    } catch(e){ console.error('오프라인큐 실행오류:',e); }
-  });
-  showToast(`오프라인 저장 ${queue.length}건 동기화 완료`, true);
-}
-
-function gasRun(fnName) {
-  // Firestore 버전 - GAS 대신 Firestore SDK 사용
-  var args = [];
-  for(var i=1;i<arguments.length;i++) args.push(arguments[i]);
-  if(!window.firestoreReady) { addToOfflineQueue(fnName, args); return; }
-  try {
-    handleFirestoreOp(fnName, args);
-  } catch(e) {
-    console.error('Firestore 오류['+fnName+']:', e);
-    addToOfflineQueue(fnName, args);
+function addToOfflineQueue(fn,args){
+  var entry={fn:fn,args:cleanWriteData(args),ts:Date.now(),qid:'q_'+Date.now()+'_'+Math.random().toString(36).slice(2)};
+  if(fn==='addExerciseRef'){
+    entry.args[0]._docId=entry.args[0]._docId||'ex_'+entry.qid;
+    var d=entry.args[0];if(db.refExercise[d.part]&&db.refExercise[d.part][d.name])db.refExercise[d.part][d.name]._docId=d._docId;
   }
+  offlineQueue.push(entry);persistWriteQueue();renderWriteStatus();
 }
-
-function handleFirestoreOp(fnName, args) {
-  var db = window.firestoreDb;
-  var a = args;
-
-  // 컬렉션 매핑
-  var colMap = {
-    'workout':'workouts','nutrition':'nutrition','measure':'measurements',
-    'plan':'plans','diary':'diary','goal':'goals',
-    'template':'templates','repeatPlan':'repeatPlans'
-  };
-
-  if(fnName === 'saveRow') {
-    var kind = a[0];
-    var data = a[1];
-    if(kind==='workout') { saveRecordToDayDoc('workouts', data); }
-    else if(kind==='nutrition') { saveRecordToDayDoc('nutrition', data); }
-    else { var col = colMap[kind] || kind; db.collection(col).doc(data.id).set(data); }
-
-  } else if(fnName === 'updateRow') {
-    var sheetName = a[0]; // '운동','영양','치수','일기'
-    var data = a[1];
-    if(sheetName==='운동') {
-      if(a[2] && a[2]!==data.date){
-        var batch=db.batch(), payload={date:data.date,workouts:{}}; payload.workouts[data.id]=data;
-        batch.set(dayDocRef(data.date),payload,{merge:true});
-        batch.update(dayDocRef(a[2]),new firebase.firestore.FieldPath('workouts',data.id),firebase.firestore.FieldValue.delete());
-        batch.commit().catch(function(e){showToast('날짜 변경 저장 실패: '+e.message,false);});
-      } else saveRecordToDayDoc('workouts', data);
-    }
-    else if(sheetName==='영양') { saveRecordToDayDoc('nutrition', data); }
-    else {
-      var sheetToCol = {'치수':'measurements','일기':'diary','목표':'goals'};
-      var col = sheetToCol[sheetName] || sheetName;
-      db.collection(col).doc(data.id).set(data);
-    }
-
-  } else if(fnName === 'deleteRow') {
-    var sheetName = a[0];
-    var id = a[1];
-    var date = a[2]; // 운동/영양 삭제 시 어느 날짜 문서인지 알아야 함
-    if(sheetName==='운동') { deleteRecordFromDayDoc('workouts', date, id); }
-    else if(sheetName==='영양') { deleteRecordFromDayDoc('nutrition', date, id); }
-    else {
-      var sheetToCol = {'치수':'measurements','일기':'diary'};
-      var col = sheetToCol[sheetName] || sheetName;
-      db.collection(col).doc(id).delete();
-    }
-
-  } else if(fnName === 'savePlanItem' || fnName === 'savePlanSetToWorkout') {
-    var data = a[0];
-    if(fnName === 'savePlanItem') {
-      saveRecordToDayDoc('plans', data);
-    } else {
-      saveRecordToDayDoc('workouts', data);
-    }
-
-  } else if(fnName === 'updatePlanItem') {
-    var item = a[0];
-    saveRecordToDayDoc('plans', item);
-
-  } else if(fnName === 'deletePlanItem') {
-    var id = a[0];
-    var date = a[1]; // 어느 날짜 문서의 plans 맵에서 지울지 알아야 함
-    deleteRecordFromDayDoc('plans', date, id);
-
-  } else if(fnName === 'updatePlanOrders') {
-    var orders = a[0]; // [{id, order, date}, ...] - 보통 같은 날짜지만 안전하게 날짜별로 묶어서 처리
-    var byDate = {};
-    orders.forEach(function(o){ (byDate[o.date] = byDate[o.date]||[]).push(o); });
-    Object.keys(byDate).forEach(function(date){
-      var upd = {};
-      byDate[date].forEach(function(o){ upd['plans.'+o.id+'.order'] = o.order; });
-      dayDocRef(date).update(upd);
-    });
-
-  } else if(fnName === 'saveDiary') {
-    var data = a[0];
-    db.collection('diary').doc(data.id).set(data);
-
-  } else if(fnName === 'deleteDiary') {
-    var id = a[0];
-    db.collection('diary').doc(id).delete();
-
-  } else if(fnName === 'saveGoal') {
-    var item = a[0];
-    db.collection('goals').doc(item.id).set(item);
-
-  } else if(fnName === 'deleteGoal') {
-    var id = a[0];
-    db.collection('goals').doc(id).delete();
-
-  } else if(fnName === 'saveTemplate') {
-    var tpl = a[0];
-    db.collection('templates').doc(tpl.id).set(tpl);
-
-  } else if(fnName === 'deleteTemplate') {
-    var id = a[0];
-    db.collection('templates').doc(id).delete();
-
-  } else if(fnName === 'saveRepeatPlan') {
-    var item = a[0];
-    db.collection('repeatPlans').doc(item.id).set(item);
-
-  } else if(fnName === 'deleteRepeatPlan') {
-    var id = a[0];
-    db.collection('repeatPlans').doc(id).delete();
-
-  } else if(fnName === 'addExerciseRef') {
-    var data = a[0];
-    var ref = db.collection('exercises').doc();
-    window.db.refExercise[data.part][data.name]._docId = ref.id;
-    ref.set(data).catch(function(e){ showToast('종목 저장 실패: '+e.message,false); });
-
-  } else if(fnName === 'updateExerciseYoutube') {
-    var part = a[0], name = a[1], youtube = a[2];
-    var ex = window.db.refExercise[part] && window.db.refExercise[part][name];
-    var exId = (ex && ex._docId) || part + '_' + name;
-    db.collection('exercises').doc(exId).update({youtube: youtube});
-
-  } else {
-    console.warn('알 수 없는 gasRun 함수:', fnName);
+function gasRun(fnName){
+  addToOfflineQueue(fnName,Array.prototype.slice.call(arguments,1));
+  // Same user action's workout and linked plan updates share one atomic batch.
+  if(!writeScheduled){writeScheduled=true;setTimeout(function(){writeScheduled=false;applyOfflineQueue();},0);}
+}
+function appendFirestoreWrite(batch,entry){
+  var fs=window.firestoreDb,a=entry.args||[],fn=entry.fn;
+  var cols={workout:'workouts',nutrition:'nutrition',measure:'measurements',diary:'diary',goal:'goals',template:'templates',repeatPlan:'repeatPlans'};
+  var sheets={'운동':'workout','영양':'nutrition','치수':'measure','일기':'diary','목표':'goal'};
+  function putDay(field,d){var payload={date:d.date};payload[field]={};payload[field][d.id]=d;batch.set(fs.collection('days').doc(d.date),payload,{merge:true});}
+  function removeDay(field,date,id){var payload={date:date};payload[field]={};payload[field][id]=firebase.firestore.FieldValue.delete();batch.set(fs.collection('days').doc(date),payload,{merge:true});}
+  function put(kind,d,oldDate){
+    if(kind==='workout'||kind==='nutrition'){
+      var field=kind==='workout'?'workouts':'nutrition';putDay(field,d);
+      if(oldDate&&oldDate!==d.date)removeDay(field,oldDate,d.id);
+    }else batch.set(fs.collection(cols[kind]||kind).doc(d.id),d);
   }
+  if(fn==='saveRow')put(a[0],a[1]);
+  else if(fn==='updateRow')put(sheets[a[0]]||a[0],a[1],a[2]);
+  else if(fn==='deleteRow'){
+    var kind=sheets[a[0]]||a[0];if(kind==='workout'||kind==='nutrition')removeDay(kind==='workout'?'workouts':'nutrition',a[2],a[1]);
+    else batch.delete(fs.collection(cols[kind]||kind).doc(a[1]));
+  }else if(fn==='savePlanItem'||fn==='updatePlanItem')putDay('plans',a[0]);
+  else if(fn==='savePlanSetToWorkout')putDay('workouts',a[0]);
+  else if(fn==='deletePlanItem')removeDay('plans',a[1],a[0]);
+  else if(fn==='updatePlanOrders')a[0].forEach(function(o){var p={date:o.date,plans:{}};p.plans[o.id]={order:o.order};batch.set(fs.collection('days').doc(o.date),p,{merge:true});});
+  else if(['saveDiary','saveGoal','saveTemplate','saveRepeatPlan'].includes(fn)){
+    var kind={saveDiary:'diary',saveGoal:'goals',saveTemplate:'templates',saveRepeatPlan:'repeatPlans'}[fn];batch.set(fs.collection(kind).doc(a[0].id),a[0]);
+  }else if(['deleteDiary','deleteGoal','deleteTemplate','deleteRepeatPlan'].includes(fn)){
+    var kind={deleteDiary:'diary',deleteGoal:'goals',deleteTemplate:'templates',deleteRepeatPlan:'repeatPlans'}[fn];batch.delete(fs.collection(kind).doc(a[0]));
+  }else if(fn==='addExerciseRef'){
+    var d=a[0];d._docId=d._docId||'ex_legacy_'+entry.ts+'_'+encodeURIComponent(d.part+'_'+d.name);batch.set(fs.collection('exercises').doc(d._docId),d);
+  }else if(fn==='updateExerciseYoutube'){
+    var ex=db.refExercise[a[0]]&&db.refExercise[a[0]][a[1]];batch.update(fs.collection('exercises').doc(ex&&ex._docId||a[0]+'_'+a[1]),{youtube:a[2]});
+  }else if(fn==='addNutritionRef')batch.set(fs.collection('nutritionRef').doc('nut_'+a[0].name),a[0]);
+  else if(fn==='deleteNutritionRef')batch.delete(fs.collection('nutritionRef').doc('nut_'+a[0]));
+  else throw new Error('지원하지 않는 저장 작업: '+fn);
 }
+async function applyOfflineQueue(){
+  renderWriteStatus();
+  if(writeBusy||!window.firestoreReady||!navigator.onLine||!offlineQueue.length)return;
+  writeBusy=true;writeError='';
+  // Keep a complete event group together. Firestore permits at most 500 writes.
+  var queue=offlineQueue.slice();
+  try{
+    var batch=window.firestoreDb.batch(),count=0;
+    var wrapped={};['set','update','delete'].forEach(function(method){wrapped[method]=function(){count++;return batch[method].apply(batch,arguments);};});
+    queue.forEach(function(entry){appendFirestoreWrite(wrapped,entry);});
+    if(count>450)throw new Error('대기 작업이 많습니다. 데이터 내보내기 후 지원을 요청해주세요.');
+    persistWriteQueue();
+    await batch.commit();
+    offlineQueue=offlineQueue.filter(function(entry){return !queue.includes(entry);});
+    writeError='';persistWriteQueue();
+    showToast('서버 저장 완료',true);
+  }catch(e){writeError='저장 미완료 · 눌러서 재시도 ('+(e.message||e)+')';console.error('저장 실패',e);}
+  finally{writeBusy=false;renderWriteStatus();}
+  if(!writeError&&offlineQueue.length)applyOfflineQueue();
+}
+function dayDocRef(date){return window.firestoreDb.collection('days').doc(date);}
 
 // ========== 계산 유틸 ==========
 function getLatestBodyWeight(targetDate) {
@@ -2544,6 +2460,10 @@ function toggleDarkMode() {
 
 var tabs=['home','plan','workout','nutrition','measure','diary'];
 function switchTab(tabId) {
+  if(editingId && editingType!==tabId){
+    editingId=null;editingType=null;
+    resetSaveButton('btnSaveWorkout','bg-blue-600');resetSaveButton('btnSaveNutrition','bg-green-600');resetSaveButton('btnSaveMeasure','bg-purple-600');
+  }
   currentTab=tabId;
   document.querySelectorAll('.tab-content').forEach(function(el){el.classList.remove('active');});
   document.querySelectorAll('.nav-item').forEach(function(el){ el.classList.remove('text-blue-600','dark:text-blue-400'); el.classList.add('text-gray-400','dark:text-gray-500'); });
@@ -2629,6 +2549,7 @@ function adjustValue(id, amount) {
   el.value = (val + amount).toFixed(1);
 }
 function showToast(msg, isSuccess=false) {
+  if(isSuccess && offlineQueue.length && /저장|삭제|추가|복사|동기화/.test(msg)) {renderWriteStatus();return;}
   var t=document.getElementById('toast');
   t.innerText=msg; t.style.background=isSuccess?'rgba(34,197,94,0.9)':'rgba(239,68,68,0.9)';
   t.style.display='block'; setTimeout(()=>{t.style.display='none';},2000);
@@ -2678,14 +2599,14 @@ function buildWorkoutAccordionHTML(workouts, prefixId) {
       var nvt=nv>0?`<span class="text-[11px] font-normal text-blue-500 ml-1">(${nv.toLocaleString()}kg${nd>0?', '+nd+'분':''})</span>`:'';
       html+=`<div class="border border-blue-100 dark:border-blue-900 rounded overflow-hidden">
         <div class="px-3 py-2 font-semibold text-sm text-gray-700 dark:text-gray-300 flex justify-between items-center bg-blue-50/50 dark:bg-gray-700/50 cursor-pointer" onclick="toggleAccordion('${nId}')">
-          <span>${name}${nvt}</span><span class="text-blue-500">${sets.length}세트 <i id="icon-${nId}" class="fa-solid fa-chevron-down ml-1 transition-transform text-xs"></i></span>
+          <span>${escapeHTML(name)}${nvt}</span><span class="text-blue-500">${sets.length}세트 <i id="icon-${nId}" class="fa-solid fa-chevron-down ml-1 transition-transform text-xs"></i></span>
         </div>
         <ul id="${nId}" style="display:none;" class="text-sm bg-white dark:bg-gray-800 p-2 border-t border-blue-100 dark:border-blue-900 space-y-1">`;
       sets.forEach((w,si)=>{
         var sv=Math.round(calculateSingleSetVolume(w));
         var svt=sv>0?`<span class="text-[10px] text-gray-400 ml-1">(${sv.toLocaleString()}kg)</span>`:'';
         var tt=w.duration?`<span class="text-[10px] text-blue-400 ml-1"><i class="fa-regular fa-clock"></i> ${w.duration}</span>`:'';
-        var memo=w.rawMemo?`<div class="text-xs text-gray-500 mt-1"><i class="fa-regular fa-comment-dots"></i> ${w.rawMemo}</div>`:'';
+        var memo=w.rawMemo?`<div class="text-xs text-gray-500 mt-1"><i class="fa-regular fa-comment-dots"></i> ${escapeHTML(w.rawMemo)}</div>`:'';
         html+=`<li class="history-item p-2 -mx-1 rounded active:bg-gray-100 dark:active:bg-gray-600 cursor-pointer" data-type="workout" data-id="${w.id}">
           <div class="flex justify-between text-gray-600 dark:text-gray-400">
             <span>${si+1}세트${tt}${svt}</span>
@@ -2770,14 +2691,14 @@ function setupSelects(){
   sortedExerciseKeys(db.refExercise).forEach(part=>{p.innerHTML+=`<option value="${part}">${part}</option>`;});
   var n=document.getElementById('nuName');
   n.innerHTML='<option value="">선택</option>';
-  Object.keys(db.refNutrition).forEach(name=>{n.innerHTML+=`<option value="${name}">${name}</option>`;});
+  Object.keys(db.refNutrition).forEach(name=>{n.innerHTML+=`<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`;});
 }
 
 function updateExercises(){
   var part=document.getElementById('woPart').value;
   var ns=document.getElementById('woName');
   ns.innerHTML='<option value="">선택하세요</option>';
-  if(part&&db.refExercise[part]) sortedExerciseKeys(db.refExercise[part]).forEach(function(name){ns.innerHTML+='<option value="'+name+'">'+name+'</option>';});
+  if(part&&db.refExercise[part]) sortedExerciseKeys(db.refExercise[part]).forEach(function(name){ns.innerHTML+='<option value="'+escapeHTML(name)+'">'+escapeHTML(name)+'</option>';});
   // 부위 변경 시 무게/횟수 초기화 (이전 종목 값 혼선 방지)
   if(!editingId) {
     document.getElementById('woWeight').value='';
@@ -3171,7 +3092,7 @@ function checkAndShowPR(data){
   if(newOneRM>maxPrev&&maxPrev>0){
     var el=document.createElement('div');
     el.className='fixed top-16 left-1/2 -translate-x-1/2 bg-yellow-500 text-white font-black px-4 py-2 rounded-full shadow-lg z-300 pr-badge text-sm';
-    el.innerHTML=`🏆 ${name} 1RM 신기록! ${Math.round(newOneRM)}kg`;
+    el.innerHTML=`🏆 ${escapeHTML(name)} 1RM 신기록! ${Math.round(newOneRM)}kg`;
     document.body.appendChild(el);
     if(navigator.vibrate) navigator.vibrate([100,50,100,50,200]);
     setTimeout(()=>el.remove(), 3000);
@@ -3180,6 +3101,7 @@ function checkAndShowPR(data){
 
 // ========== 저장 함수들 ==========
 function saveWorkout(){
+  if(editingType!=='workout'){editingId=null;editingType=null;}
   if(isSavingRecord) return; isSavingRecord=true; setTimeout(()=>{isSavingRecord=false;},1000);
   var wasEditing=!!editingId;
   var previous=wasEditing?db.workout.find(w=>w.id===editingId):null;
@@ -3460,7 +3382,7 @@ function updateNutritionList() {
   var cur = sel.value;
   sel.innerHTML = '<option value="">선택</option>';
   Object.keys(db.refNutrition).sort().forEach(function(name) {
-    sel.innerHTML += '<option value="'+name+'">'+name+'</option>';
+    sel.innerHTML += '<option value="'+escapeHTML(name)+'">'+escapeHTML(name)+'</option>';
   });
   if(cur && db.refNutrition[cur]) sel.value = cur;
 }
@@ -3477,13 +3399,15 @@ function setNutritionTimeNow() {
 }
 
 function saveNutrition(){
+  var previousNutrition=editingType==='nutrition'&&db.nutrition.find(function(n){return n.id===editingId;});
+  if(editingType!=='nutrition'){editingId=null;editingType=null;}
   if(isSavingRecord) return; isSavingRecord=true; setTimeout(function(){isSavingRecord=false;},1000);
   // 시간 미입력 시 현재 시각 자동 입력
   if(!document.getElementById('nuTime').value) setNutritionTimeNow();
   var data={id:editingId||'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:document.getElementById('nuDate').value,time:document.getElementById('nuTime').value,name:document.getElementById('nuName').value,qty:document.getElementById('nuQty').value,unit:document.getElementById('nuUnit').value};
   data.protein = getNutritionRecordProtein(data);
   if(!data.name){customAlert('영양제명을 선택하세요.');isSavingRecord=false;return;}
-  if(editingId){var idx=db.nutrition.findIndex(function(w){return w.id===editingId;});if(idx>-1)db.nutrition[idx]=data;editingId=null;editingType=null;resetSaveButton('btnSaveNutrition','bg-green-600');gasRun('updateRow','영양',data);}
+  if(editingId){var idx=db.nutrition.findIndex(function(w){return w.id===editingId;});if(idx>-1)db.nutrition[idx]=data;editingId=null;editingType=null;resetSaveButton('btnSaveNutrition','bg-green-600');gasRun('updateRow','영양',data,previousNutrition&&previousNutrition.date);}
   else{db.nutrition.push(data);gasRun('saveRow','nutrition',data);}
   updateTodayProtein(); updateTodayViews(); showToast('저장 완료!',true);
 }
@@ -3546,6 +3470,8 @@ function setLastMeasurementValues(){
   if(db.measure.length>0){var l=db.measure[db.measure.length-1];['meWeight','meArmL','meArmR','meChest'].forEach(function(id,i){var vals=[l.weight,l.armL,l.armR,l.chest];document.getElementById(id).value=vals[i];});}
 }
 function saveMeasurement(){
+  bodyWeightCache={};
+  if(editingType!=='measure'){editingId=null;editingType=null;}
   if(isSavingRecord) return; isSavingRecord=true; setTimeout(()=>{isSavingRecord=false;},1000);
   var data={id:editingId||'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:document.getElementById('meDate').value,weight:document.getElementById('meWeight').value,armL:document.getElementById('meArmL').value,armR:document.getElementById('meArmR').value,chest:document.getElementById('meChest').value};
   if(editingId){var idx=db.measure.findIndex(w=>w.id===editingId);if(idx>-1)db.measure[idx]=data;editingId=null;editingType=null;resetSaveButton('btnSaveMeasure','bg-purple-600');gasRun('updateRow','치수',data);}
@@ -3565,6 +3491,7 @@ function setDiaryCondition(val){
   });
 }
 function saveDiary(){
+  if(editingType!=='diary'){editingId=null;editingType=null;}
   if(isSavingRecord) return; isSavingRecord=true; setTimeout(function(){isSavingRecord=false;},1000);
   var data={id:editingId||'diary_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:document.getElementById('diaryDate').value,condition:selectedCondition||document.getElementById('diaryCondition').value,sleep:document.getElementById('diarySleep').value,meal:document.getElementById('diaryMeal').value,memo:document.getElementById('diaryMemo').value};
   if(editingId){var idx=db.diary.findIndex(function(d){return d.id===editingId;});if(idx>-1)db.diary[idx]=data;editingId=null;editingType=null;gasRun('updateRow','일기',data);}
@@ -3573,6 +3500,7 @@ function saveDiary(){
   document.getElementById('diaryMemo').value=''; document.getElementById('diarySleep').value=''; document.getElementById('diaryMeal').value='';
   setDiaryCondition('');
 }
+function escapeHTML(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function renderDiaryList(){
   var el=document.getElementById('diaryRecentList'); if(!el) return;
   var recent=db.diary.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
@@ -3582,12 +3510,12 @@ function renderDiaryList(){
     <div class="flex justify-between items-start mb-1">
       <span class="font-bold text-gray-800 dark:text-gray-200 text-sm">${d.date}</span>
       <div class="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
-        ${d.condition?`<span>${condEmoji[d.condition]||''} ${d.condition}</span>`:''}
+        ${d.condition?`<span>${condEmoji[d.condition]||''} ${escapeHTML(d.condition)}</span>`:''}
         ${d.sleep?`<span><i class="fa-solid fa-moon"></i> ${d.sleep}h</span>`:''}
       </div>
     </div>
-    ${d.meal?`<p class="text-xs text-gray-500 dark:text-gray-400 mb-1"><i class="fa-solid fa-utensils mr-1"></i>${d.meal}</p>`:''}
-    ${d.memo?`<p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">${d.memo}</p>`:''}
+    ${d.meal?`<p class="text-xs text-gray-500 dark:text-gray-400 mb-1"><i class="fa-solid fa-utensils mr-1"></i>${escapeHTML(d.meal)}</p>`:''}
+    ${d.memo?`<p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">${escapeHTML(d.memo)}</p>`:''}
     <p class="text-xs text-blue-500 mt-2">눌러서 전체 읽기 · 길게 눌러 수정/삭제</p>
   </div>`).join('');
 }
@@ -4006,7 +3934,7 @@ function savePlanSetNow(planId,setIdx,mode){
     db.workout.push(data); set.done=true; set.workoutId=data.id;
     // actual 값 확정 저장
     set.actual_weight=savedWeight; set.actual_reps=savedReps;
-    gasRun('savePlanSetToWorkout',data); gasRun('updatePlanItem',item);
+    gasRun('savePlanSetToWorkout',data);
   } else if(mode==='super1'){
     if(set.done1) return;
     savedPart=set.part1||''; savedName=set.name1||'';
@@ -4016,7 +3944,7 @@ function savePlanSetNow(planId,setIdx,mode){
     var data={id:'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:item.date,part:savedPart,name:savedName,weight:savedWeight,unit:savedUnit,reps:savedReps,memo:memo,time:timeStr,duration:dur,absTime:now.getTime(),rawMemo:''};
     db.workout.push(data); set.done1=true; set.workoutId1=data.id;
     set.actual_weight1=savedWeight; set.actual_reps1=savedReps;
-    gasRun('savePlanSetToWorkout',data); gasRun('updatePlanItem',item);
+    gasRun('savePlanSetToWorkout',data);
   } else if(mode==='super2'){
     if(set.done2) return;
     savedPart=set.part2||''; savedName=set.name2||'';
@@ -4026,9 +3954,10 @@ function savePlanSetNow(planId,setIdx,mode){
     var data={id:'id_'+Date.now()+'_'+Math.random().toString(36).substr(2,5),date:item.date,part:savedPart,name:savedName,weight:savedWeight,unit:savedUnit,reps:savedReps,memo:memo,time:timeStr,duration:dur,absTime:now.getTime(),rawMemo:''};
     db.workout.push(data); set.done2=true; set.workoutId2=data.id;
     set.actual_weight2=savedWeight; set.actual_reps2=savedReps;
-    gasRun('savePlanSetToWorkout',data); gasRun('updatePlanItem',item);
+    gasRun('savePlanSetToWorkout',data);
   }
   item.status=item.sets.every(function(s){return item.part==='__super__'?(s.done1&&s.done2):s.done;})?'done':'planned';
+  gasRun('updatePlanItem',item);
   syncWorkoutTabFromPlan(item.date, savedPart, savedName, savedWeight, savedReps, savedUnit);
   renderPlanList(); updatePlanExecRate(); updateAttendance();
   updateTodaySets(); updateTodayVolume(); updateTodayViews();
@@ -4523,7 +4452,7 @@ function openHistory(type) {
       } else if(type==='diary'){
         var condEmoji={'최고':'😄','좋음':'🙂','보통':'😐','나쁨':'😟'};
         html+='<div class="space-y-2 mt-2">';
-        data.forEach(d=>{ html+=`<div class="history-item bg-white dark:bg-gray-800 p-3 rounded shadow-sm text-sm border border-gray-200 dark:border-gray-600 cursor-pointer" data-type="diary" data-id="${d.id}" role="button" tabindex="0" aria-label="일기 전체 읽기"><div class="flex justify-between mb-1"><span class="font-bold dark:text-white">${d.date}</span><span class="text-xs text-gray-400">${d.condition?condEmoji[d.condition]+' '+d.condition:''} ${d.sleep?d.sleep+'h':''}</span></div>${d.memo?`<p class="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">${d.memo}</p>`:''}</div>`; });
+        data.forEach(d=>{ html+=`<div class="history-item bg-white dark:bg-gray-800 p-3 rounded shadow-sm text-sm border border-gray-200 dark:border-gray-600 cursor-pointer" data-type="diary" data-id="${d.id}" role="button" tabindex="0" aria-label="일기 전체 읽기"><div class="flex justify-between mb-1"><span class="font-bold dark:text-white">${d.date}</span><span class="text-xs text-gray-400">${d.condition?condEmoji[d.condition]+' '+d.condition:''} ${d.sleep?d.sleep+'h':''}</span></div>${d.memo?`<p class="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">${escapeHTML(d.memo)}</p>`:''}</div>`; });
         html+='</div>';
       }
       html+='</div></div>';
@@ -4537,7 +4466,9 @@ function closeHistoryModal(){ document.getElementById('historyModal').classList.
 
 function initHistoryLongPress(){
   var attach=(id)=>{
-    var el=document.getElementById(id); if(!el) return;
+    var el=document.getElementById(id); if(!el||el.dataset.historyBound) return;
+    el.dataset.historyBound='1';
+    el.addEventListener('contextmenu',function(e){var item=e.target.closest('.history-item');if(!item)return;e.preventDefault();selectedRecordType=item.dataset.type;selectedRecordId=item.dataset.id;document.getElementById('actionModal').classList.add('active');});
     el.addEventListener('touchstart',function(e){
       var item=e.target.closest('.history-item'); if(!item) return;
       isPressing=true; startY=e.touches[0].clientY;
@@ -4576,7 +4507,7 @@ function editSelectedRecord(){
     document.getElementById('diarySleep').value=item.sleep||'';
     document.getElementById('diaryMeal').value=item.meal||'';
     document.getElementById('diaryMemo').value=item.memo||'';
-    if(item.condition) setDiaryCondition(item.condition);
+    setDiaryCondition(item.condition||'');
     return;
   }
   var item=db[type] && db[type].find(x=>x.id===id); if(!item) return;
@@ -4627,7 +4558,7 @@ function executeDeleteRecord(){
   document.getElementById('dailyPopupModal').classList.remove('active');
   if(document.getElementById('historyModal').classList.contains('active')) openHistory(type);
   showToast('삭제 완료!',true);
-  if(type==='measure') updateCharts();
+  if(type==='measure'){bodyWeightCache={};updateCharts();updateAttendance();updateTodayVolume();}
   if(type==='workout'){ updateAttendance(); updateTodayVolume(); updateOneRmSelect(); unlinkPlanByWorkoutId(id); }
   if(type==='measure') renderGoalWeight();
   if(type==='nutrition') updateTodayProtein();
@@ -4893,4 +4824,5 @@ window.onload=function(){
 </script>
 </body>
 </html>
+
 
