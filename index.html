@@ -3890,7 +3890,10 @@ function renderPlanList(){
 function updatePlanListValue(planId,setIdx,field,value){
   var item=db.plan.find(function(p){return p.id===planId;});
   if(!item||!item.sets[setIdx]) return;
-  item.sets[setIdx][field]=field.startsWith('reps')?parseInt(value)||0:parseFloat(value)||0;
+  var next=field.startsWith('reps')?parseInt(value):parseFloat(value);
+  if(!Number.isFinite(next)||next<0) return;
+  if(Number(item.sets[setIdx][field]||0)===next) return;
+  item.sets[setIdx][field]=next;
   clearTimeout(item._saveTimer);
   item._saveTimer=setTimeout(function(){gasRun('updatePlanItem',item);},800);
 }
@@ -3899,7 +3902,13 @@ function updatePlanListValue(planId,setIdx,field,value){
 function updateActualValue(planId,setIdx,field,value){
   var item=db.plan.find(function(p){return p.id===planId;});
   if(!item||!item.sets[setIdx]) return;
-  item.sets[setIdx][field]=field.startsWith('actual_reps')?parseInt(value)||0:parseFloat(value)||0;
+  var set=item.sets[setIdx],isReps=field.startsWith('actual_reps');
+  var next=isReps?parseInt(value):parseFloat(value);
+  if(!Number.isFinite(next)||next<0) return;
+  var plannedField=field.replace('actual_','');
+  var current=set[field]!=null?set[field]:(isReps?(set.extra?0:(set[plannedField]||15)):(set[plannedField]||0));
+  if(Number(current)===next) return;
+  set[field]=next;
   clearTimeout(item._saveTimer);
   item._saveTimer=setTimeout(function(){gasRun('updatePlanItem',item);},800);
 }
