@@ -1616,7 +1616,7 @@ function calculateProtein(nData) {
     } else {
       // fallback: 기존 하드코딩 방식
       var nameLower = name.toLowerCase();
-      if(nameLower.includes('닭가슴살')) t += qty * 0.20;
+      if(nameLower.includes('닭가슴살') || /^(소세지|소시지)$/.test(nameLower.trim())) t += qty * (16 / 80);
       else if(nameLower.includes('더단백(250)')) t += 20 * (qty / 250);
       else if(nameLower.includes('더단백(350)')) t += 30 * (qty / 350);
       else if(nameLower.includes('계란') || nameLower.includes('달걀')) t += qty * 7;
