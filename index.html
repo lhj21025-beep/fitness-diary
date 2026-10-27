@@ -401,11 +401,11 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     </div>
     <div class="input-row mb-4">
       <label class="input-label text-gray-600 dark:text-gray-400">중량(<span class="woUnitLabel">KG</span>)</label>
-      <input type="number" id="woWeight" onfocus="this.select()" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white text-center font-bold" placeholder="0">
+      <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="woWeight" onfocus="this.select()" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white text-center font-bold" placeholder="0">
     </div>
     <div class="input-row mb-1">
       <label class="input-label text-gray-600 dark:text-gray-400">반복횟수</label>
-      <input type="number" id="woReps" onfocus="this.select()" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white text-center font-bold" placeholder="0">
+      <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="woReps" onfocus="this.select()" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white text-center font-bold" placeholder="0">
     </div>
     <div class="w-full px-2 mb-1 mt-3">
       <input type="range" id="woRepsSlider" min="0" max="20" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-600 accent-blue-600">
@@ -468,7 +468,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     <div class="input-row">
       <label class="input-label text-gray-600 dark:text-gray-400">수량</label>
       <div class="flex flex-grow gap-2">
-        <input type="number" id="nuQty" onfocus="this.select()" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white text-center font-bold m-0 w-2/3">
+        <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="nuQty" onfocus="this.select()" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white text-center font-bold m-0 w-2/3">
         <input type="text" id="nuUnit" readonly class="input-field border dark:border-gray-600 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 text-center m-0 w-1/3 p-0">
       </div>
     </div>
@@ -496,10 +496,10 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
   </div>
   <div class="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-4 shadow-sm mb-4">
     <div class="input-row mb-4"><label class="input-label text-gray-600 dark:text-gray-400">날짜</label><input type="date" id="meDate" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white"></div>
-    <div class="input-row"><label class="input-label text-gray-600 dark:text-gray-400">체중(kg)</label><div class="flex items-center flex-grow justify-between bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded-lg p-1"><button onclick="adjustValue('meWeight',-0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">-</button><input type="number" id="meWeight" onfocus="this.select()" class="w-24 text-center font-bold text-lg bg-transparent border-b-2 border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 dark:text-white"><button onclick="adjustValue('meWeight',0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">+</button></div></div>
-    <div class="input-row"><label class="input-label text-gray-600 dark:text-gray-400">팔(좌)(cm)</label><div class="flex items-center flex-grow justify-between bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded-lg p-1"><button onclick="adjustValue('meArmL',-0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">-</button><input type="number" id="meArmL" onfocus="this.select()" class="w-24 text-center font-bold text-lg bg-transparent border-b-2 border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 dark:text-white"><button onclick="adjustValue('meArmL',0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">+</button></div></div>
-    <div class="input-row"><label class="input-label text-gray-600 dark:text-gray-400">팔(우)(cm)</label><div class="flex items-center flex-grow justify-between bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded-lg p-1"><button onclick="adjustValue('meArmR',-0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">-</button><input type="number" id="meArmR" onfocus="this.select()" class="w-24 text-center font-bold text-lg bg-transparent border-b-2 border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 dark:text-white"><button onclick="adjustValue('meArmR',0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">+</button></div></div>
-    <div class="input-row mb-4"><label class="input-label text-gray-600 dark:text-gray-400">가슴(cm)</label><div class="flex items-center flex-grow justify-between bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded-lg p-1"><button onclick="adjustValue('meChest',-0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">-</button><input type="number" id="meChest" onfocus="this.select()" class="w-24 text-center font-bold text-lg bg-transparent border-b-2 border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 dark:text-white"><button onclick="adjustValue('meChest',0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">+</button></div></div>
+    <div class="input-row"><label class="input-label text-gray-600 dark:text-gray-400">체중(kg)</label><div class="flex items-center flex-grow justify-between bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded-lg p-1"><button onclick="adjustValue('meWeight',-0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">-</button><input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="meWeight" onfocus="this.select()" class="w-24 text-center font-bold text-lg bg-transparent border-b-2 border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 dark:text-white"><button onclick="adjustValue('meWeight',0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">+</button></div></div>
+    <div class="input-row"><label class="input-label text-gray-600 dark:text-gray-400">팔(좌)(cm)</label><div class="flex items-center flex-grow justify-between bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded-lg p-1"><button onclick="adjustValue('meArmL',-0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">-</button><input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="meArmL" onfocus="this.select()" class="w-24 text-center font-bold text-lg bg-transparent border-b-2 border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 dark:text-white"><button onclick="adjustValue('meArmL',0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">+</button></div></div>
+    <div class="input-row"><label class="input-label text-gray-600 dark:text-gray-400">팔(우)(cm)</label><div class="flex items-center flex-grow justify-between bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded-lg p-1"><button onclick="adjustValue('meArmR',-0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">-</button><input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="meArmR" onfocus="this.select()" class="w-24 text-center font-bold text-lg bg-transparent border-b-2 border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 dark:text-white"><button onclick="adjustValue('meArmR',0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">+</button></div></div>
+    <div class="input-row mb-4"><label class="input-label text-gray-600 dark:text-gray-400">가슴(cm)</label><div class="flex items-center flex-grow justify-between bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded-lg p-1"><button onclick="adjustValue('meChest',-0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">-</button><input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="meChest" onfocus="this.select()" class="w-24 text-center font-bold text-lg bg-transparent border-b-2 border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 dark:text-white"><button onclick="adjustValue('meChest',0.1)" class="w-10 h-10 bg-gray-200 dark:bg-gray-600 rounded text-lg font-bold dark:text-white">+</button></div></div>
     <button id="btnSaveMeasure" onclick="saveMeasurement()" class="w-full bg-purple-600 text-white font-bold py-3 rounded-lg shadow-md active:bg-purple-700">기록 저장</button>
   </div>
   <!-- AI 체성분 해석 -->
@@ -532,7 +532,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     </div>
     <div class="input-row mb-3">
       <label class="input-label text-gray-600 dark:text-gray-400">수면(시간)</label>
-      <input type="number" id="diarySleep" onfocus="this.select()" step="0.5" min="0" max="24" placeholder="7.5" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white text-center font-bold">
+      <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="diarySleep" onfocus="this.select()" step="0.5" min="0" max="24" placeholder="7.5" class="input-field border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white text-center font-bold">
     </div>
     <div class="input-row mb-3">
       <label class="input-label text-gray-600 dark:text-gray-400">식사</label>
@@ -627,7 +627,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
 <div id="targetWeightModal" class="modal" style="z-index:250;" onclick="closeModalOnBg(event,'targetWeightModal')">
   <div class="modal-content bg-white dark:bg-gray-800 pb-10">
     <h3 class="text-lg font-bold mb-4 text-center dark:text-white">목표 체중 설정</h3>
-    <div class="mb-4"><label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">목표 체중 (kg)</label><input type="number" id="targetWeightInput" class="w-full border p-3 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-center text-xl font-bold" placeholder="예: 70.0"></div>
+    <div class="mb-4"><label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">목표 체중 (kg)</label><input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="targetWeightInput" class="w-full border p-3 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-center text-xl font-bold" placeholder="예: 70.0"></div>
     <div class="flex gap-4 mb-4">
       <div class="flex-1"><label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">시작일</label><input type="date" id="targetStartDate" class="w-full border p-2 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 border-blue-400 text-center text-sm font-bold"></div>
       <div class="flex-1"><label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">종료일</label><input type="date" id="targetEndDate" class="w-full border p-2 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 border-blue-400 text-center text-sm font-bold"></div>
@@ -714,12 +714,14 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     <h3 class="text-lg font-bold mb-4 text-center dark:text-white"><i class="fa-solid fa-key mr-2"></i>설정</h3>
     <div class="mb-4">
       <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Gemini API 키</label>
-      <input type="password" id="geminiApiKeyInput" class="w-full border p-3 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm" placeholder="AIza...">
+      <form id="apiKeySettingsForm" autocomplete="off" onsubmit="event.preventDefault()">
+      <input type="password" name="gemini-api-key" autocomplete="new-password" data-lpignore="true" data-1p-ignore id="geminiApiKeyInput" class="w-full border p-3 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-sm" placeholder="AIza...">
+      </form>
       <p class="text-xs text-gray-400 mt-1">로컬에만 저장됩니다. 서버 전송 없음.</p>
     </div>
     <div class="mb-6">
       <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">주간 운동 목표 (회)</label>
-      <input type="number" id="weeklyGoalInput" class="w-full border p-3 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-center text-xl font-bold" placeholder="4" min="1" max="7">
+      <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="weeklyGoalInput" class="w-full border p-3 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-center text-xl font-bold" placeholder="4" min="1" max="7">
     </div>
     <button class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-md" onclick="saveSettings()">저장하기</button>
   </div>
@@ -738,7 +740,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
         <option value="weekly_protein">주간 단백질 (g/일 평균)</option>
       </select>
     </div>
-    <div class="mb-3"><label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">목표값</label><input type="number" id="goalValue" class="w-full border p-3 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-center text-xl font-bold" placeholder="4"></div>
+    <div class="mb-3"><label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">목표값</label><input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="goalValue" class="w-full border p-3 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-center text-xl font-bold" placeholder="4"></div>
     <div class="flex gap-3 mb-6">
       <div class="flex-1"><label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">시작일</label><input type="date" id="goalStartDate" class="w-full border p-2 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-center text-sm font-bold"></div>
       <div class="flex-1"><label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">종료일</label><input type="date" id="goalEndDate" class="w-full border p-2 rounded-lg dark:bg-gray-700 dark:text-white dark:border-gray-600 text-center text-sm font-bold"></div>
@@ -858,7 +860,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
       <div class="flex gap-3">
         <div class="flex-1">
           <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">기본 수량</label>
-          <input type="number" id="nuRefQty" placeholder="예: 5" min="0" step="0.5"
+          <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="nuRefQty" placeholder="예: 5" min="0" step="0.5"
             class="w-full border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-sm text-center font-bold">
         </div>
         <div class="flex-1">
@@ -906,11 +908,11 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     <div class="mb-4">
       <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">시작 시간</label>
       <div class="flex gap-2 items-center">
-        <input type="number" id="youtubeMinInput" placeholder="분" min="0"
+        <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="youtubeMinInput" placeholder="분" min="0"
           class="w-20 border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-center font-bold"
           oninput="previewYoutubeLink()">
         <span class="text-gray-500 dark:text-gray-400 font-bold">분</span>
-        <input type="number" id="youtubeSecInput" placeholder="초" min="0" max="59"
+        <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore id="youtubeSecInput" placeholder="초" min="0" max="59"
           class="w-20 border dark:border-gray-600 bg-gray-50 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-center font-bold"
           oninput="previewYoutubeLink()">
         <span class="text-gray-500 dark:text-gray-400 font-bold">초</span>
@@ -3645,17 +3647,17 @@ function renderPlanSets(){
         <div class="flex items-center gap-2 mb-1">
           <span class="text-xs font-bold text-gray-400 w-8">${i+1}세트</span>
           <span class="text-xs text-purple-500 w-14 truncate">${n1}</span>
-          <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight1||0}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].weight1=parseFloat(this.value)||0">
+          <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight1||0}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].weight1=parseFloat(this.value)||0">
           <span class="text-xs text-gray-400">${exerciseUnit(document.getElementById('superPart1').value,n1)}×</span>
-          <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps1||15}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].reps1=parseInt(this.value)||15">
+          <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps1||15}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].reps1=parseInt(this.value)||15">
           <span class="text-xs text-gray-400">회</span>
         </div>
         <div class="flex items-center gap-2">
           <span class="text-xs font-bold text-gray-400 w-8"></span>
           <span class="text-xs text-indigo-500 w-14 truncate">${n2}</span>
-          <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight2||0}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].weight2=parseFloat(this.value)||0">
+          <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight2||0}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].weight2=parseFloat(this.value)||0">
           <span class="text-xs text-gray-400">${exerciseUnit(document.getElementById('superPart2').value,n2)}×</span>
-          <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps2||15}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].reps2=parseInt(this.value)||15">
+          <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps2||15}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].reps2=parseInt(this.value)||15">
           <span class="text-xs text-gray-400">회</span>
         </div>
       </div>`;
@@ -3664,9 +3666,9 @@ function renderPlanSets(){
     planSets.forEach((set,i)=>{
       html+=`<div class="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2 mb-1">
         <span class="text-xs font-bold text-gray-400 w-8">${i+1}세트</span>
-        <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight||0}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].weight=parseFloat(this.value)||0">
+        <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight||0}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].weight=parseFloat(this.value)||0">
         <span class="text-xs text-gray-500 dark:text-gray-400">${exerciseUnit(part,document.getElementById('planName').value)}×</span>
-        <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps||15}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].reps=parseInt(this.value)||15">
+        <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps||15}" onfocus="selectAllOnFocus(this)" onchange="planSets[${i}].reps=parseInt(this.value)||15">
         <span class="text-xs text-gray-500 dark:text-gray-400">회</span>
       </div>`;
     });
@@ -3822,8 +3824,8 @@ function renderPlanList(){
       +'<span class="text-[10px] text-gray-400 w-14"></span>'
       +'</div>';
 
-    var inpW='style="width:50px;text-align:center;font-size:0.9rem;font-weight:700;border-radius:6px;padding:3px 2px;border:2px solid #3b82f6;cursor:pointer;background:transparent;" class="plan-list-input dark:text-white"';
-    var inpR='style="width:42px;text-align:center;font-size:0.9rem;font-weight:700;border-radius:6px;padding:3px 2px;border:2px solid #3b82f6;cursor:pointer;background:transparent;" class="plan-list-input dark:text-white"';
+    var inpW='aria-label="세트 무게" inputmode="decimal" style="width:50px;text-align:center;font-size:0.9rem;font-weight:700;border-radius:6px;padding:3px 2px;border:2px solid #3b82f6;cursor:pointer;background:transparent;" class="plan-list-input dark:text-white"';
+    var inpR='aria-label="세트 반복횟수" inputmode="numeric" style="width:42px;text-align:center;font-size:0.9rem;font-weight:700;border-radius:6px;padding:3px 2px;border:2px solid #3b82f6;cursor:pointer;background:transparent;" class="plan-list-input dark:text-white"';
 
     var setsHtml='';
     (item.sets||[]).forEach(function(set,si){
@@ -3840,9 +3842,9 @@ function renderPlanList(){
         setsHtml+='<span class="text-xs text-purple-500 w-12 truncate">'+(set.name1||'')+'</span>';
         setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+(set.weight1||0)+planSetUnit(item,set,'1',false)+'×'+(set.reps1||15)+'</span>';
         setsHtml+='<div class="flex-1 flex items-center gap-0.5 justify-center">';
-        setsHtml+='<input type="number" '+inpW+' value="'+aw1+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight1" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
+        setsHtml+='<input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore '+inpW+' value="'+aw1+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight1" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='<span class="text-[10px] text-gray-400">'+planSetUnit(item,set,'1',true)+'×</span>';
-        setsHtml+='<input type="number" '+inpR+' value="'+ar1+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_reps1" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
+        setsHtml+='<input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore '+inpR+' value="'+ar1+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_reps1" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='</div>';
         setsHtml+='<button data-id="'+item.id+'" data-si="'+si+'" data-mode="super1" onclick="savePlanSetNow(this.dataset.id,parseInt(this.dataset.si),this.dataset.mode)" class="set-done-btn '+(d1?'saved':'unsaved')+' w-14 text-center">'+(d1?'<i class="fa-solid fa-check mr-1"></i>완료':'저장')+'</button>';
         setsHtml+='</div>';
@@ -3852,9 +3854,9 @@ function renderPlanList(){
         setsHtml+='<span class="text-xs text-indigo-500 w-12 truncate">'+(set.name2||'')+'</span>';
         setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+(set.weight2||0)+planSetUnit(item,set,'2',false)+'×'+(set.reps2||15)+'</span>';
         setsHtml+='<div class="flex-1 flex items-center gap-0.5 justify-center">';
-        setsHtml+='<input type="number" '+inpW+' value="'+aw2+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight2" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
+        setsHtml+='<input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore '+inpW+' value="'+aw2+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight2" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='<span class="text-[10px] text-gray-400">'+planSetUnit(item,set,'2',true)+'×</span>';
-        setsHtml+='<input type="number" '+inpR+' value="'+ar2+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_reps2" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
+        setsHtml+='<input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore '+inpR+' value="'+ar2+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_reps2" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='</div>';
         setsHtml+='<button data-id="'+item.id+'" data-si="'+si+'" data-mode="super2" onclick="savePlanSetNow(this.dataset.id,parseInt(this.dataset.si),this.dataset.mode)" class="set-done-btn '+(d2?'saved':'unsaved')+' w-14 text-center">'+(d2?'<i class="fa-solid fa-check mr-1"></i>완료':'저장')+'</button>';
         setsHtml+='</div>';
@@ -3869,9 +3871,9 @@ function renderPlanList(){
         setsHtml+='<span class="text-xs font-bold text-gray-400 w-8 flex items-center">'+(si+1)+'세트'+extraSetBadge+'</span>';
         setsHtml+='<span class="flex-1 text-center text-xs text-gray-500 dark:text-gray-400">'+planTargetText+'</span>';
         setsHtml+='<div class="flex-1 flex items-center gap-0.5 justify-center">';
-        setsHtml+='<input type="number" '+inpW+' value="'+aw+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
+        setsHtml+='<input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore '+inpW+' value="'+aw+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_weight" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='<span class="text-[10px] text-gray-400">'+planSetUnit(item,set,'',true)+'×</span>';
-        setsHtml+='<input type="number" '+inpR+' value="'+ar+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_reps" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
+        setsHtml+='<input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore '+inpR+' value="'+ar+'" onfocus="selectAllOnFocus(this)" data-id="'+item.id+'" data-si="'+si+'" data-field="actual_reps" onchange="updateActualValue(this.dataset.id,parseInt(this.dataset.si),this.dataset.field,this.value)">';
         setsHtml+='</div>';
         setsHtml+='<button data-id="'+item.id+'" data-si="'+si+'" data-mode="normal" onclick="savePlanSetNow(this.dataset.id,parseInt(this.dataset.si),this.dataset.mode)" class="set-done-btn '+(done?'saved':'unsaved')+' w-14 text-center">'+(done?'<i class="fa-solid fa-check mr-1"></i>완료':'저장')+'</button>';
         setsHtml+='</div>';
@@ -4071,14 +4073,14 @@ function renderPlanEditSets(isSuper){
     editingPlanSets.forEach((set,i)=>{
       html+=`<div class="flex flex-col gap-1 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
         <div class="flex items-center gap-2"><span class="text-xs font-bold text-gray-400 w-8">${i+1}세트</span><span class="text-xs text-purple-500 w-16 truncate">${set.name1||'운동1'}</span>
-          <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight1||0}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].weight1=parseFloat(this.value)||0">
+          <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight1||0}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].weight1=parseFloat(this.value)||0">
           <span class="text-xs text-gray-400">${planSetUnit(item,set,'1',false)}×</span>
-          <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps1||15}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].reps1=parseInt(this.value)||15">
+          <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps1||15}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].reps1=parseInt(this.value)||15">
           <span class="text-xs text-gray-400">회</span></div>
         <div class="flex items-center gap-2"><span class="text-xs font-bold text-gray-400 w-8"></span><span class="text-xs text-indigo-500 w-16 truncate">${set.name2||'운동2'}</span>
-          <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight2||0}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].weight2=parseFloat(this.value)||0">
+          <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight2||0}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].weight2=parseFloat(this.value)||0">
           <span class="text-xs text-gray-400">${planSetUnit(item,set,'2',false)}×</span>
-          <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps2||15}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].reps2=parseInt(this.value)||15">
+          <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps2||15}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].reps2=parseInt(this.value)||15">
           <span class="text-xs text-gray-400">회</span></div>
       </div>`;
     });
@@ -4086,9 +4088,9 @@ function renderPlanEditSets(isSuper){
     editingPlanSets.forEach((set,i)=>{
       html+=`<div class="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2">
         <span class="text-xs font-bold text-gray-400 w-8">${i+1}세트</span>
-        <input type="number" class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight||0}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].weight=parseFloat(this.value)||0">
+        <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-weight-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.weight||0}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].weight=parseFloat(this.value)||0">
         <span class="text-xs text-gray-500">${planSetUnit(item,set,'',false)}×</span>
-        <input type="number" class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps||15}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].reps=parseInt(this.value)||15">
+        <input type="number" autocomplete="off" data-lpignore="true" data-1p-ignore class="plan-reps-input ${ibg} border border-gray-300 dark:border-gray-500" value="${set.reps||15}" onfocus="selectAllOnFocus(this)" onchange="editingPlanSets[${i}].reps=parseInt(this.value)||15">
         <span class="text-xs text-gray-500">회</span>
       </div>`;
     });
