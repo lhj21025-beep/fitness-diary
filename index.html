@@ -108,11 +108,12 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
       <button onclick="changeReportOffset(1)" id="reportNextBtn" class="w-7 h-7 flex items-center justify-center bg-white/20 rounded-full active:bg-white/40 transition-colors opacity-40"><i class="fa-solid fa-chevron-right text-xs"></i></button>
     </div>
     <!-- 통계 그리드 -->
-    <div class="grid grid-cols-4 gap-2 text-center">
-      <div><div id="weekWorkoutCount" class="text-2xl font-black">0</div><div class="text-[10px] opacity-75">운동일</div></div>
-      <div><div id="weekVolume" class="text-2xl font-black">0</div><div class="text-[10px] opacity-75">총볼륨(k)</div></div>
-      <div><div id="weekProtein" class="text-2xl font-black">0</div><div class="text-[10px] opacity-75">단백질(g)</div></div>
-      <div><div id="weekGoalRate" class="text-2xl font-black">0%</div><div class="text-[10px] opacity-75">목표달성</div></div>
+    <div class="grid grid-cols-5 gap-1 text-center">
+      <div><div id="weekWorkoutCount" class="text-base sm:text-xl font-black whitespace-nowrap tracking-tight">0</div><div class="text-[10px] opacity-75">운동일</div></div>
+      <div><div id="weekAttendanceRate" class="text-base sm:text-xl font-black whitespace-nowrap tracking-tight">0%</div><div class="text-[10px] opacity-75 whitespace-nowrap">출석률 <span id="weekAttendanceDays">0/0</span></div></div>
+      <div><div id="weekVolume" class="text-base sm:text-xl font-black whitespace-nowrap tracking-tight">0</div><div class="text-[10px] opacity-75">총볼륨(k)</div></div>
+      <div><div id="weekProtein" class="text-base sm:text-xl font-black whitespace-nowrap tracking-tight">0</div><div class="text-[10px] opacity-75">단백질(g)</div></div>
+      <div><div id="weekGoalRate" class="text-base sm:text-xl font-black whitespace-nowrap tracking-tight">0%</div><div class="text-[10px] opacity-75">목표달성</div></div>
     </div>
     <!-- 주간 목표 경고 -->
     <div id="weeklyGoalWarning" class="hidden mt-2 text-xs font-bold text-white/90 bg-white/10 rounded-lg px-2 py-1 text-center"></div>
@@ -2038,6 +2039,9 @@ function updateWeeklyReport() {
 
   var periodWorkouts = db.workout.filter(function(w){ return w.date >= periodStart && w.date <= periodEnd; });
   var periodDates = new Set(periodWorkouts.map(function(w){ return w.date; }));
+  // UTC date-only arithmetic counts calendar days inclusively, without DST rounding.
+  var attendanceDays = Math.max(0, Math.round((Date.parse(periodEnd+'T00:00:00Z') - Date.parse(periodStart+'T00:00:00Z')) / 86400000) + 1);
+  var attendanceRate = attendanceDays ? Math.round(periodDates.size / attendanceDays * 100) : 0;
   var periodVol = calculateVolume(periodWorkouts);
   var periodNutrition = db.nutrition.filter(function(n){ return n.date >= periodStart && n.date <= periodEnd; });
   var periodProtein = Math.round(calculateProtein(periodNutrition));
@@ -2055,6 +2059,8 @@ function updateWeeklyReport() {
   var goalRate = Math.min(100, Math.round(periodDates.size / goalTarget * 100));
 
   document.getElementById('weekWorkoutCount').innerText = periodDates.size;
+  document.getElementById('weekAttendanceRate').innerText = attendanceRate + '%';
+  document.getElementById('weekAttendanceDays').innerText = periodDates.size + '/' + attendanceDays;
   document.getElementById('weekVolume').innerText = periodVol >= 1000 ? (periodVol/1000).toFixed(1) : periodVol;
   document.getElementById('weekProtein').innerText = periodProtein;
   document.getElementById('weekGoalRate').innerText = goalRate + '%';
