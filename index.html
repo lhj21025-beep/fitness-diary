@@ -329,6 +329,7 @@ input[type=number].plan-list-input::-webkit-inner-spin-button,input[type=number]
     <div class="flex justify-between items-center mb-3">
       <h3 class="font-bold text-gray-800 dark:text-gray-200 flex items-center"><i class="fa-solid fa-list-check mr-2 text-purple-500"></i>계획 목록</h3>
     </div>
+    <div id="planTimeSummary" hidden class="mb-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800"></div>
     <div id="planList"></div>
   </div>
 </div>
@@ -3768,11 +3769,76 @@ function savePlanExercise(){
   showToast('계획이 저장되었습니다!',true);
 }
 
+// View state only: folding does not enqueue a database write.
+var collapsedPlanIds = new Set();
+function togglePlanDetails(button) {
+  var id=button.dataset.id, body=document.getElementById(button.getAttribute('aria-controls'));
+  if(!body) return;
+  var collapsed=!body.hidden;
+  body.hidden=collapsed;
+  button.setAttribute('aria-expanded',String(!collapsed));
+  button.querySelector('[data-fold-icon]').textContent=collapsed?'▸':'▾';
+  if(collapsed) collapsedPlanIds.add(id); else collapsedPlanIds.delete(id);
+}
+function planDurationSeconds(record) {
+  var duration=String(record.duration||'');
+  if(!duration){var match=String(record.memo||'').match(/^\[[^|\]]+\|([^\]]*)\]/);duration=match?match[1]:'';}
+  if(duration.indexOf('-')!==-1) return 0;
+  var m=duration.match(/(\d+)분/),s=duration.match(/(\d+)초/);
+  return (m?Number(m[1])*60:0)+(s?Number(s[1]):0);
+}
+function estimatePlanItemTime(item, history) {
+  var result={seconds:0,known:0,total:0};
+  (item.sets||[]).forEach(function(set){
+    (item.part==='__super__'?['1','2']:['']).forEach(function(k){
+      result.total++;
+      var part=k?set['part'+k]:item.part,name=k?set['name'+k]:item.name;
+      var reps=Number(set['actual_reps'+k]!=null?set['actual_reps'+k]:set['reps'+k]);
+      if(part==='유산소') {
+        // Cardio uses weight as minutes, not load or repetition duration.
+        var minutes=Number(set['actual_weight'+k]!=null?set['actual_weight'+k]:set['weight'+k]);
+        if(Number.isFinite(minutes)&&minutes>0){result.seconds+=minutes*60;result.known++;}
+        return;
+      }
+      if(!Number.isFinite(reps)||reps<=0) return;
+      var samples=history.filter(function(w){return w.date<item.date&&w.part===part&&w.name===name;})
+        .map(function(w){return {date:w.date,reps:Number(w.reps),seconds:planDurationSeconds(w)};})
+        .filter(function(w){return w.reps>0&&Number.isFinite(w.reps)&&w.seconds>=10&&w.seconds<=600;})
+        .sort(function(a,b){return b.date.localeCompare(a.date);}).slice(0,60)
+        .filter(function(w){return Math.abs(w.reps-reps)<=Math.max(3,reps*0.3);})
+        .sort(function(a,b){return Math.abs(a.reps-reps)-Math.abs(b.reps-reps)||b.date.localeCompare(a.date);}).slice(0,7);
+      if(samples.length<3) return;
+      // Median of comparable rep counts avoids treating rest as seconds per rep.
+      var seconds=samples.map(function(w){return w.seconds;}).sort(function(a,b){return a-b;});
+      var mid=Math.floor(seconds.length/2);
+      result.seconds+=seconds.length%2?seconds[mid]:(seconds[mid-1]+seconds[mid])/2;
+      result.known++;
+    });
+  });
+  return result;
+}
+function planTimeLabel(estimate) {
+  if(!estimate.known) return '기록 부족';
+  return '약 '+Math.max(1,Math.round(estimate.seconds/60))+'분'+(estimate.known<estimate.total?' · 일부만 추정':'');
+}
+function renderPlanTimeSummary(items) {
+  var summary=document.getElementById('planTimeSummary');
+  if(!summary) return;
+  summary.hidden=!items.length;
+  var total={seconds:0,known:0,total:0};
+  items.forEach(function(item){var e=estimatePlanItemTime(item,db.workout);total.seconds+=e.seconds;total.known+=e.known;total.total+=e.total;
+    var label=document.getElementById('plan-time-'+item.id);if(label)label.textContent='예상 '+planTimeLabel(e);
+  });
+  summary.innerHTML='<div class="font-bold text-blue-700 dark:text-blue-300">예상 운동시간 · '+planTimeLabel(total)+'</div>'
+    +'<div class="text-xs text-gray-500 dark:text-gray-400 mt-1">'+total.known+'/'+total.total+'세트 계산 · 같은 종목의 비슷한 횟수 기록 기준 (휴식·이동 포함)</div>'
+    +'<div class="text-xs text-gray-500 dark:text-gray-400 mt-1">이전 날짜의 최근 60개 기록 중 가까운 횟수 최대 7개 중앙값 · 최소 3개 필요. 10초 미만·10분 초과 간격 제외. 준비·마무리 시간 제외, 슈퍼세트는 실제 휴식에 따라 차이가 날 수 있어요.</div>';
+}
+
 function renderPlanList(){
   var date=document.getElementById('planDate').value||getTodayStr();
   var container=document.getElementById('planList');
   var items=db.plan.filter(function(p){return p.date===date;}).sort(function(a,b){return (a.order||0)-(b.order||0);});
-  if(!items.length){container.innerHTML='<div class="text-center text-sm text-gray-400 dark:text-gray-500 py-6">저장된 계획이 없습니다.</div>';return;}
+  if(!items.length){renderPlanTimeSummary(items);container.innerHTML='<div class="text-center text-sm text-gray-400 dark:text-gray-500 py-6">저장된 계획이 없습니다.</div>';return;}
 
   // 해당 날짜 실제 운동 볼륨 (db.workout 기준 - 계획 초과, 추가 종목 모두 포함)
   var dateWorkouts = db.workout.filter(function(w){return w.date===date;});
@@ -3815,7 +3881,7 @@ function renderPlanList(){
       + '<button data-id="'+item.id+'" data-dir="-1" onclick="movePlanItem(this.dataset.id,parseInt(this.dataset.dir))" class="w-5 h-5 flex items-center justify-center text-gray-400 '+upDis+'"><i class="fa-solid fa-chevron-up text-[10px]"></i></button>'
       + '<button data-id="'+item.id+'" data-dir="1" onclick="movePlanItem(this.dataset.id,parseInt(this.dataset.dir))" class="w-5 h-5 flex items-center justify-center text-gray-400 '+dnDis+'"><i class="fa-solid fa-chevron-down text-[10px]"></i></button>'
       + '</div>'
-      + '<div><span class="font-bold text-sm text-gray-800 dark:text-gray-200">'+superIcon+item.name+'</span><span class="ml-1 text-xs text-gray-400">'+total+'세트</span>'+addedItemBadge+'</div>'
+      + '<button type="button" data-id="'+escapeHTML(item.id)+'" aria-controls="plan-body-'+escapeHTML(item.id)+'" aria-expanded="'+(!collapsedPlanIds.has(item.id))+'" onclick="togglePlanDetails(this)" class="text-left py-1"><span data-fold-icon class="mr-1 text-gray-400">'+(collapsedPlanIds.has(item.id)?'▸':'▾')+'</span><span class="font-bold text-sm text-gray-800 dark:text-gray-200">'+superIcon+escapeHTML(item.name)+'</span><span class="ml-1 text-xs text-gray-400">'+total+'세트</span>'+addedItemBadge+'<span id="plan-time-'+escapeHTML(item.id)+'" class="block text-xs text-blue-600 dark:text-blue-400 mt-1"></span></button>'
       + '</div>'
       + '<div class="flex items-center gap-2">'
       + rateBadgeHtml
@@ -3887,12 +3953,13 @@ function renderPlanList(){
     });
 
     return '<div class="bg-white dark:bg-gray-800 border '+border+' rounded-xl shadow-sm overflow-hidden">'
-      +headerDiv+colHeader
-      +'<div class="px-3 py-1">'+setsHtml+'</div>'
+      +headerDiv+'<div id="plan-body-'+escapeHTML(item.id)+'"'+(collapsedPlanIds.has(item.id)?' hidden':'')+'>'+colHeader
+      +'<div class="px-3 py-1">'+setsHtml+'</div></div>'
       +'</div>';
   });
 
   container.innerHTML='<div class="space-y-3">'+rows.join('')+'</div>';
+  renderPlanTimeSummary(items);
 }
 
 function updatePlanListValue(planId,setIdx,field,value){
@@ -3902,6 +3969,7 @@ function updatePlanListValue(planId,setIdx,field,value){
   if(!Number.isFinite(next)||next<0) return;
   if(Number(item.sets[setIdx][field]||0)===next) return;
   item.sets[setIdx][field]=next;
+  renderPlanTimeSummary(db.plan.filter(function(p){return p.date===document.getElementById('planDate').value;}));
   clearTimeout(item._saveTimer);
   item._saveTimer=setTimeout(function(){gasRun('updatePlanItem',item);},800);
 }
@@ -3917,6 +3985,7 @@ function updateActualValue(planId,setIdx,field,value){
   var current=set[field]!=null?set[field]:(isReps?(set.extra?0:(set[plannedField]||15)):(set[plannedField]||0));
   if(Number(current)===next) return;
   set[field]=next;
+  renderPlanTimeSummary(db.plan.filter(function(p){return p.date===document.getElementById('planDate').value;}));
   clearTimeout(item._saveTimer);
   item._saveTimer=setTimeout(function(){gasRun('updatePlanItem',item);},800);
 }
