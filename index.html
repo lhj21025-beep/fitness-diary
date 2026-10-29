@@ -2389,7 +2389,7 @@ function openDailyPopup(dateStr) {
   var dailyVol=calculateVolume(wData), dailyDur=calcDuration(wData);
   var volArr=[];
   if(dailyVol>0) volArr.push('총 볼륨: '+dailyVol.toLocaleString()+'kg');
-  if(dailyDur>0) volArr.push('총 시간: '+dailyDur+'분');
+  // Detailed estimated/actual times are shown in the comparison card below.
   var totalPro=calculateProtein(nData);
   if(totalPro>0) volArr.push('단백질: '+Math.round(totalPro)+'g');
   var planTotal=0;
@@ -2403,7 +2403,8 @@ function openDailyPopup(dateStr) {
     + '<button onclick="goToDateTab(\'workout\',\''+dateStr+'\')" class="flex-1 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-bold active:bg-blue-200 transition-colors"><i class="fa-solid fa-dumbbell mr-1"></i>이날 운동탭</button>'
     + '</div>';
 
-  var html=shortcutHtml;
+  var timeComparisonHtml='<div class="mb-4 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800">'+workoutTimeComparisonHTML(pData,wData)+'</div>';
+  var html=shortcutHtml+timeComparisonHtml;
   if(pData.length>0){
     html+='<h3 class="font-bold text-purple-600 dark:text-purple-400 mb-2 border-b dark:border-gray-700 pb-1"><i class="fa-solid fa-clipboard-list mr-1"></i>계획</h3>';
     pData.sort(function(a,b){return (a.order||0)-(b.order||0);}).forEach(function(item){
@@ -2422,7 +2423,7 @@ function openDailyPopup(dateStr) {
     html+='<h3 class="font-bold text-purple-600 dark:text-purple-400 mb-2 mt-4 border-b dark:border-gray-700 pb-1"><i class="fa-solid fa-ruler mr-1"></i>치수</h3>';
     mData.forEach(function(m){ html+='<div class="history-item flex flex-wrap justify-between bg-white dark:bg-gray-800 p-3 rounded gap-2 text-xs cursor-pointer active:bg-gray-200 dark:active:bg-gray-600" data-type="measure" data-id="'+m.id+'"><span>체중:<b>'+m.weight+'kg</b></span><span>가슴:<b>'+m.chest+'cm</b></span><span>팔:<b>'+m.armL+'/'+m.armR+'cm</b></span></div>'; });
   }
-  if(!html||html===shortcutHtml) html=shortcutHtml+'<p class="text-center text-gray-500 py-10">기록이 없습니다.</p>';
+  if(!wData.length&&!nData.length&&!mData.length&&!pData.length) html=shortcutHtml+timeComparisonHtml+'<p class="text-center text-gray-500 py-10">기록이 없습니다.</p>';
   document.getElementById('dailyPopupList').innerHTML=html;
   document.getElementById('dailyPopupModal').classList.add('active');
 }
@@ -3821,17 +3822,49 @@ function planTimeLabel(estimate) {
   if(!estimate.known) return '기록 부족';
   return '약 '+Math.max(1,Math.round(estimate.seconds/60))+'분'+(estimate.known<estimate.total?' · 일부만 추정':'');
 }
+function getWorkoutTimeComparison(items, workouts) {
+  var estimate={seconds:0,known:0,total:0},actual={seconds:0,known:0,total:workouts.length},done=0;
+  items.forEach(function(item){
+    var e=estimatePlanItemTime(item,db.workout);
+    estimate.seconds+=e.seconds;estimate.known+=e.known;estimate.total+=e.total;
+    (item.sets||[]).forEach(function(set){
+      if(item.part==='__super__'){if(set.done1)done++;if(set.done2)done++;}
+      else if(set.done)done++;
+    });
+  });
+  workouts.forEach(function(w){
+    var seconds=planDurationSeconds(w);
+    if(Number.isFinite(seconds)&&seconds>0&&seconds<=86400){actual.seconds+=seconds;actual.known++;}
+  });
+  return {estimate:estimate,actual:actual,done:done};
+}
+function workoutTimeComparisonHTML(items,workouts) {
+  var c=getWorkoutTimeComparison(items,workouts),e=c.estimate,a=c.actual;
+  var actualLabel=!a.total?'기록 없음':!a.known?'시간 기록 없음':Math.max(1,Math.round(a.seconds/60))+'분'+(a.known<a.total?' (일부 기록)':'');
+  var estimatedLabel=!e.total?'계획 없음':planTimeLabel(e);
+  var note='';
+  if(e.total&&c.done<e.total) note='계획 '+c.done+'/'+e.total+'세트 완료 · 실제 시간은 현재까지의 누적입니다.';
+  else if(e.total&&e.known===e.total&&a.total&&a.known===a.total){
+    var delta=Math.round((a.seconds-e.seconds)/60);
+    note=delta===0?'예상과 비슷하게 완료 (분 단위)':('예상보다 '+Math.abs(delta)+'분 '+(delta>0?'더 소요':'짧게 소요'));
+  } else if(e.total) note='예상 또는 실제 시간 기록이 부족해 정확한 차이는 표시하지 않습니다.';
+  return '<div class="grid grid-cols-2 gap-3"><div><div class="text-xs text-gray-500 dark:text-gray-400">예상 운동시간</div><div class="font-bold text-blue-700 dark:text-blue-300">'+estimatedLabel+'</div></div>'
+    +'<div><div class="text-xs text-gray-500 dark:text-gray-400">실제 운동시간</div><div class="font-bold text-gray-800 dark:text-white">'+actualLabel+'</div></div></div>'
+    +'<p class="text-xs text-gray-600 dark:text-gray-300 mt-2">'+note+'</p>'
+    +'<p class="text-xs text-gray-500 dark:text-gray-400 mt-1">예상 '+e.known+'/'+e.total+'세트 · 실제 시간 기록 '+a.known+'/'+a.total+'세트. 실제는 선택일 전체 기록의 세트 간 시간 합계(휴식·이동 포함), 유산소는 기록된 운동시간입니다. 첫 세트 시간이 없으면 일부 기록으로 표시합니다.</p>'
+    +'<details class="text-xs text-gray-500 dark:text-gray-400 mt-2"><summary class="cursor-pointer">계산 기준</summary><p class="mt-1">예상은 현재 계획과 해당 날짜 이전의 동일 종목 기록으로 재계산합니다. 최근 60개 중 비슷한 횟수 최대 7개의 중앙값(최소 3개), 10초 미만·10분 초과 간격 제외. 준비·마무리 시간 제외. 계획 외 운동이나 슈퍼세트 휴식 방식에 따라 차이가 날 수 있습니다.</p></details>';
+}
 function renderPlanTimeSummary(items) {
   var summary=document.getElementById('planTimeSummary');
   if(!summary) return;
-  summary.hidden=!items.length;
-  var total={seconds:0,known:0,total:0};
-  items.forEach(function(item){var e=estimatePlanItemTime(item,db.workout);total.seconds+=e.seconds;total.known+=e.known;total.total+=e.total;
-    var label=document.getElementById('plan-time-'+item.id);if(label)label.textContent='예상 '+planTimeLabel(e);
+  var date=document.getElementById('planDate').value||getTodayStr();
+  var workouts=db.workout.filter(function(w){return w.date===date;});
+  summary.hidden=!items.length&&!workouts.length;
+  items.forEach(function(item){
+    var label=document.getElementById('plan-time-'+item.id);
+    if(label)label.textContent='예상 '+planTimeLabel(estimatePlanItemTime(item,db.workout));
   });
-  summary.innerHTML='<div class="font-bold text-blue-700 dark:text-blue-300">예상 운동시간 · '+planTimeLabel(total)+'</div>'
-    +'<div class="text-xs text-gray-500 dark:text-gray-400 mt-1">'+total.known+'/'+total.total+'세트 계산 · 같은 종목의 비슷한 횟수 기록 기준 (휴식·이동 포함)</div>'
-    +'<div class="text-xs text-gray-500 dark:text-gray-400 mt-1">이전 날짜의 최근 60개 기록 중 가까운 횟수 최대 7개 중앙값 · 최소 3개 필요. 10초 미만·10분 초과 간격 제외. 준비·마무리 시간 제외, 슈퍼세트는 실제 휴식에 따라 차이가 날 수 있어요.</div>';
+  summary.innerHTML=workoutTimeComparisonHTML(items,workouts);
 }
 
 function renderPlanList(){
